@@ -86,7 +86,7 @@
 <script>
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0d08);
-scene.fog = new THREE.Fog(0x0a0d08, 15, 90);
+scene.fog = new THREE.Fog(0x1a2016, 35, 140);
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 500);
 const renderer = new THREE.WebGLRenderer({antialias:true});
@@ -101,30 +101,52 @@ window.addEventListener('resize', ()=>{
 });
 
 // ---------- Lighting ----------
-const hemi = new THREE.HemisphereLight(0x88aa66, 0x1a1610, 0.6);
+const hemi = new THREE.HemisphereLight(0xcfe8a8, 0x3a3020, 1.15);
 scene.add(hemi);
-const dirLight = new THREE.DirectionalLight(0xfff4d6, 0.9);
+const ambient = new THREE.AmbientLight(0xffffff, 0.45);
+scene.add(ambient);
+const dirLight = new THREE.DirectionalLight(0xfff4d6, 1.5);
 dirLight.position.set(20,40,10);
 dirLight.castShadow = true;
 dirLight.shadow.mapSize.set(1024,1024);
 dirLight.shadow.camera.left = -40; dirLight.shadow.camera.right = 40;
 dirLight.shadow.camera.top = 40; dirLight.shadow.camera.bottom = -40;
 scene.add(dirLight);
+const fillLight = new THREE.DirectionalLight(0xaad4ff, 0.4);
+fillLight.position.set(-25,20,-15);
+scene.add(fillLight);
+
+// accent point lights scattered around for atmosphere (warm tactical lamps)
+const lampSpots = [
+  {x:-6,z:8,color:0xffb060}, {x:14,z:-10,color:0x60c0ff},
+  {x:24,z:4,color:0xc9d94a}, {x:-20,z:-16,color:0xff8060},
+  {x:2,z:-20,color:0x80ffcf}
+];
+lampSpots.forEach(s=>{
+  const p = new THREE.PointLight(s.color, 1.1, 22, 2);
+  p.position.set(s.x, 3.2, s.z);
+  scene.add(p);
+  const bulbGeo = new THREE.SphereGeometry(0.12,8,8);
+  const bulbMat = new THREE.MeshBasicMaterial({color:s.color});
+  const bulb = new THREE.Mesh(bulbGeo, bulbMat);
+  bulb.position.copy(p.position);
+  scene.add(bulb);
+});
 
 // ---------- Floor ----------
-const floorMat = new THREE.MeshStandardMaterial({color:0x23281c, roughness:0.95});
+const floorMat = new THREE.MeshStandardMaterial({color:0x3c4530, roughness:0.9});
 const floor = new THREE.Mesh(new THREE.PlaneGeometry(120,120), floorMat);
 floor.rotation.x = -Math.PI/2;
 floor.receiveShadow = true;
 scene.add(floor);
 
-const gridHelper = new THREE.GridHelper(120,60,0x3a4028,0x1c2015);
+const gridHelper = new THREE.GridHelper(120,60,0x5c6a42,0x2c3420);
 gridHelper.position.y = 0.01;
 scene.add(gridHelper);
 
 // ---------- Walls (destructible) ----------
-const wallMat = new THREE.MeshStandardMaterial({color:0x5a4f3a, roughness:0.85});
-const wallBrokenMat = new THREE.MeshStandardMaterial({color:0x2a2418, roughness:1, transparent:true, opacity:0.25});
+const wallMat = new THREE.MeshStandardMaterial({color:0x7a6d50, roughness:0.8});
+const wallBrokenMat = new THREE.MeshStandardMaterial({color:0x3a3324, roughness:1, transparent:true, opacity:0.3});
 let walls = [];
 function makeWall(x,z,w,d,h=4){
   const geo = new THREE.BoxGeometry(w,h,d);
@@ -152,6 +174,71 @@ function buildLevel(){
   const b4=makeWall(40,0,1,90,6); b4.hp=9999; b4.maxhp=9999;
 }
 buildLevel();
+
+// ---------- Decoration props ----------
+function addCrate(x,z,scale=1,rotY=0){
+  const geo = new THREE.BoxGeometry(1.1*scale,1.1*scale,1.1*scale);
+  const mat = new THREE.MeshStandardMaterial({color:0x8a6a3a, roughness:0.85});
+  const crate = new THREE.Mesh(geo, mat);
+  crate.position.set(x, 0.55*scale, z);
+  crate.rotation.y = rotY;
+  crate.castShadow = true; crate.receiveShadow = true;
+  scene.add(crate);
+  // strap accents
+  const strapMat = new THREE.MeshStandardMaterial({color:0x2a2418});
+  const strapGeo = new THREE.BoxGeometry(1.14*scale,0.08*scale,1.14*scale);
+  const strap = new THREE.Mesh(strapGeo, strapMat);
+  strap.position.set(x,0.55*scale,z);
+  strap.rotation.y = rotY;
+  scene.add(strap);
+}
+function addBarrel(x,z,color=0x3a4a3a){
+  const geo = new THREE.CylinderGeometry(0.4,0.4,1.1,14);
+  const mat = new THREE.MeshStandardMaterial({color, roughness:0.6, metalness:0.3});
+  const barrel = new THREE.Mesh(geo, mat);
+  barrel.position.set(x,0.55,z);
+  barrel.castShadow = true; barrel.receiveShadow = true;
+  scene.add(barrel);
+}
+function addSandbagRow(x,z,rotY=0,count=4){
+  const mat = new THREE.MeshStandardMaterial({color:0x9a8a5c, roughness:1});
+  for(let i=0;i<count;i++){
+    const geo = new THREE.BoxGeometry(0.7,0.35,0.4);
+    const bag = new THREE.Mesh(geo, mat);
+    const offset = (i-count/2)*0.72;
+    bag.position.set(x + Math.cos(rotY)*offset, 0.18, z + Math.sin(rotY)*offset);
+    bag.rotation.y = rotY + (Math.random()*0.1-0.05);
+    bag.castShadow = true; bag.receiveShadow = true;
+    scene.add(bag);
+  }
+}
+function addStreetLampPole(x,z){
+  const poleGeo = new THREE.CylinderGeometry(0.06,0.08,3.6,8);
+  const poleMat = new THREE.MeshStandardMaterial({color:0x1c1c1c, roughness:0.6});
+  const pole = new THREE.Mesh(poleGeo, poleMat);
+  pole.position.set(x,1.8,z);
+  pole.castShadow = true;
+  scene.add(pole);
+}
+
+addCrate(-14,-6,1.2,0.3);
+addCrate(-13,-5,0.9,1.1);
+addCrate(10,10,1.1,0.6);
+addCrate(28,-14,1,0.2);
+addCrate(-24,16,1.3,0.8);
+addBarrel(-8,3,0x4a5a3a);
+addBarrel(-7.4,3.6,0x5a3a3a);
+addBarrel(18,-2,0x3a4a5a);
+addBarrel(30,10,0x4a4a3a);
+addBarrel(-26,-18,0x5a4a2a);
+addSandbagRow(20,20,0,5);
+addSandbagRow(-2,-14,Math.PI/2,4);
+addSandbagRow(32,4,Math.PI/2,4);
+addStreetLampPole(-6,8);
+addStreetLampPole(14,-10);
+addStreetLampPole(24,4);
+addStreetLampPole(-20,-16);
+addStreetLampPole(2,-20);
 
 // ---------- Site ----------
 const siteGeo = new THREE.RingGeometry(2.6,3,32);
@@ -464,19 +551,32 @@ function update(){
   const mag = Math.hypot(mx,mz)||1;
   mx/=mag; mz/=mag;
   const spd = player.speed*(keys['shift']?player.sprintMul:1)*dt;
-  const sinY = Math.sin(player.yaw), cosY = Math.cos(player.yaw);
-  const worldDx = (mx*cosY - mz*sinY) * -1;
-  const worldDz = (mx*sinY + mz*cosY) * -1;
-  const newPos = {x:player.x + worldDx*spd, z:player.z + worldDz*spd};
+
+  // orient camera FIRST, then derive movement from its actual facing direction
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = player.yaw;
+  camera.rotation.x = player.pitch;
+
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  forward.y = 0; forward.normalize();
+  const worldUp = new THREE.Vector3(0,1,0);
+  const right = new THREE.Vector3().crossVectors(forward, worldUp).normalize();
+
+  // mz is -1 when W (move along forward), +1 when S (move opposite forward)
+  // mx is -1 when A (move opposite right), +1 when D (move along right)
+  const moveDir = new THREE.Vector3();
+  moveDir.addScaledVector(forward, -mz);
+  moveDir.addScaledVector(right, mx);
+  if(moveDir.lengthSq() > 0) moveDir.normalize();
+
+  const newPos = {x:player.x + moveDir.x*spd, z:player.z + moveDir.z*spd};
   resolveWallCollisionXZ(newPos, player.r);
   newPos.x = Math.max(-39, Math.min(39, newPos.x));
   newPos.z = Math.max(-39, Math.min(39, newPos.z));
   player.x = newPos.x; player.z = newPos.z;
 
   camera.position.set(player.x, player.height, player.z);
-  camera.rotation.order = 'YXZ';
-  camera.rotation.y = player.yaw;
-  camera.rotation.x = player.pitch;
 
   // shooting
   if(player.fireCd>0) player.fireCd -= dt;
