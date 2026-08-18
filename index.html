@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>Breach Protocol 3D</title>
 <style>
-  html,body{margin:0;padding:0;overflow:hidden;background:#05070a;font-family:'Courier New',monospace;color:#e8e6d8;}
+  html,body{margin:0;padding:0;overflow:hidden;background:#05070a;font-family:'Courier New',monospace;color:#000;}
   #canvasWrap{position:relative;width:100vw;height:100vh;}
   canvas{display:block;}
 
@@ -19,21 +19,25 @@
   #crosshair:after{ top:9px; left:0; width:20px; height:2px; }
 
   #hud{
-    position:fixed; top:16px; left:16px; z-index:5; font-size:13px; letter-spacing:1px;
-    background:rgba(10,12,8,0.55); padding:10px 14px; border:1px solid #3a3f2a;
+    position:fixed; top:16px; left:16px; z-index:5; font-size:13px; letter-spacing:1px; color:#000;
+    background:rgba(232,230,216,0.88); padding:10px 14px; border:1px solid #3a3f2a;
   }
   #hud div{margin:2px 0;}
-  #hud span{color:#c9d94a;}
-  .bar{width:120px;height:6px;background:#222;border:1px solid #444;display:inline-block;vertical-align:middle;margin-left:6px;}
-  .bar i{display:block;height:100%;background:#c9d94a;}
+  #hud span{color:#3a4a10; font-weight:bold;}
+  .bar{width:120px;height:6px;background:#ccc;border:1px solid #444;display:inline-block;vertical-align:middle;margin-left:6px;}
+  .bar i{display:block;height:100%;background:#5a7a1a;}
 
   #ammoHud{
-    position:fixed; bottom:20px; right:24px; z-index:5; font-size:16px; letter-spacing:1px;
-    background:rgba(10,12,8,0.55); padding:8px 14px; border:1px solid #3a3f2a;
+    position:fixed; bottom:20px; right:24px; z-index:5; font-size:16px; letter-spacing:1px; color:#000;
+    background:rgba(232,230,216,0.88); padding:8px 14px; border:1px solid #3a3f2a;
   }
   #detonate{
-    position:fixed; bottom:20px; left:24px; z-index:5; font-size:16px; color:#d9524a; font-weight:bold;
-    background:rgba(10,12,8,0.55); padding:8px 14px; border:1px solid #6b2a2a; display:none;
+    position:fixed; bottom:20px; left:24px; z-index:5; font-size:16px; color:#000; font-weight:bold;
+    background:rgba(232,190,190,0.9); padding:8px 14px; border:1px solid #6b2a2a; display:none;
+  }
+  #stanceHud{
+    position:fixed; bottom:60px; right:24px; z-index:5; font-size:12px; letter-spacing:1px; color:#000;
+    background:rgba(232,230,216,0.88); padding:6px 14px; border:1px solid #3a3f2a;
   }
   #plantRing{
     position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
@@ -42,7 +46,8 @@
 
   #msg{
     position:fixed; top:38%; left:50%; transform:translate(-50%,-50%);
-    font-size:26px; letter-spacing:4px; color:#c9d94a; text-shadow:0 0 14px rgba(201,217,74,0.6);
+    font-size:26px; letter-spacing:4px; color:#000; font-weight:bold;
+    background:rgba(232,230,216,0.9); padding:10px 20px; border:1px solid #3a3f2a;
     z-index:6; text-align:center; display:none; pointer-events:none;
   }
   #startScreen{
