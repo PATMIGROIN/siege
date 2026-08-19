@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Breach Protocol: Siege</title>
+<title>Tom Clacy's Rainbow 6 Siege</title>
 <style>
 html,body{
   margin:0;
@@ -36,6 +36,16 @@ canvas{
   pointer-events:none;
   z-index:4;
   background:radial-gradient(circle, rgba(90,200,255,.05) 30%, rgba(60,180,255,.35) 100%);
+  opacity:0;
+  transition:opacity .3s;
+}
+/* OVERDRIVE OVERLAY */
+#overdriveOverlay{
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  z-index:4;
+  background:radial-gradient(circle, rgba(255,150,60,.04) 30%, rgba(255,110,30,.3) 100%);
   opacity:0;
   transition:opacity .3s;
 }
@@ -238,10 +248,11 @@ canvas{
   display:flex;
   flex-direction:column;
   align-items:center;
-  justify-content:center;
+  justify-content:flex-start;
   text-align:center;
-  padding:20px;
+  padding:24px 20px;
   box-sizing:border-box;
+  overflow-y:auto;
 }
 #menuScreen h1{
   letter-spacing:8px;
@@ -300,6 +311,32 @@ canvas{
   color:#9a9a80;
   margin-top:6px;
   line-height:1.4;
+}
+#mapGrid{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  justify-content:center;
+  max-width:760px;
+  margin-bottom:6px;
+}
+.mapChip{
+  padding:8px 14px;
+  border:1px solid #3a3f2a;
+  background:rgba(20,24,16,.85);
+  cursor:pointer;
+  font-size:11px;
+  letter-spacing:1px;
+  color:#c9c9b0;
+  transition:border-color .15s, box-shadow .15s, color .15s;
+}
+.mapChip:hover{
+  color:#e8e6d8;
+}
+.mapChip.selected{
+  border-color:#c9d94a;
+  color:#c9d94a;
+  box-shadow:0 0 10px rgba(201,217,74,.3);
 }
 #menuFooter{
   margin-top:24px;
@@ -365,6 +402,8 @@ canvas{
   <h1>BREACH PROTOCOL</h1>
   <p class="menuSub">SELECT YOUR OPERATOR</p>
   <div id="operatorGrid"></div>
+  <p class="menuSub" style="margin-top:22px;">SELECT MAP</p>
+  <div id="mapGrid"></div>
   <div id="menuFooter">
     <div id="controlsInfo">
       <b>WASD</b> MOVE &middot; <b>MOUSE</b> LOOK &middot; <b>CLICK</b> SHOOT &middot;
@@ -380,6 +419,7 @@ canvas{
 </div>
 <div id="vignette"></div>
 <div id="cloakOverlay"></div>
+<div id="overdriveOverlay"></div>
 <div id="crosshair"></div>
 <div id="scopeOverlay"></div>
 <div id="damageOverlay"></div>
@@ -1664,6 +1704,7 @@ const player={
   abilityCd:0,
   cloakTimer:0,
   intelTimer:0,
+  overdriveTimer:0,
   aimT:0,
   aimFov:50
 };
@@ -2323,41 +2364,40 @@ function updateWeaponModel(op){
   }
   else if(op.id==='ember'){
     gunGroup.scale.set(.97,.97,.88);
-    const torchNozzle=
+    const capacitor=
       new THREE.Mesh(
-        new THREE.CylinderGeometry(
-          .035,.05,.22,8
+        new THREE.BoxGeometry(
+          .1,.14,.24
         ),
         new THREE.MeshStandardMaterial({
-          color:0xff5a20,
-          emissive:0xff3a10,
-          emissiveIntensity:.6,
-          metalness:.4,
-          roughness:.4
+          color:0xff7a30,
+          emissive:0xff5a10,
+          emissiveIntensity:.7,
+          metalness:.5,
+          roughness:.35
         })
       );
-    torchNozzle.rotation.z=Math.PI/2;
-    torchNozzle.position.set(
-      .2,-.18,-.9
+    capacitor.position.set(
+      .2,-.1,-.9
     );
-    gunGroup.add(torchNozzle);
-    weaponExtras.push(torchNozzle);
-    const tank=
+    gunGroup.add(capacitor);
+    weaponExtras.push(capacitor);
+    const coil=
       new THREE.Mesh(
         new THREE.CylinderGeometry(
-          .07,.07,.32,10
+          .05,.05,.3,10
         ),
         new THREE.MeshStandardMaterial({
-          color:0x8a3020,
-          metalness:.5,
+          color:0x2a1a10,
+          metalness:.6,
           roughness:.5
         })
       );
-    tank.position.set(
+    coil.position.set(
       .44,-.32,-.3
     );
-    gunGroup.add(tank);
-    weaponExtras.push(tank);
+    gunGroup.add(coil);
+    weaponExtras.push(coil);
   }
   else if(op.id==='vesper'){
     gunGroup.scale.set(.92,.92,.95);
@@ -2423,43 +2463,57 @@ function fireWeaponRay(origin,dir){
   }
   let closestEnemy=null;
   let closestDist=Infinity;
+  let closestIsHead=false;
+  const bodyRadius=.42;
+  const headMinY=1.68;
+  const headMaxY=2.45;
   for(
     const en of enemies
   ){
     if(en.dead)
       continue;
-    const headPos=
-      new THREE.Vector3(
-        en.x,
-        1.9,
-        en.z
-      );
-    const toEnemy=
-      headPos.clone()
-        .sub(origin);
-    const proj=
-      toEnemy.dot(dir);
+    /*
+      Enemies are treated as a vertical column at
+      (en.x,en.z). Find where the shot ray passes
+      closest to that column (in the XZ plane),
+      then classify the exact vertical hit point as
+      a head hit (instant kill) or a body hit.
+    */
+    const denom=
+      dir.x*dir.x+
+      dir.z*dir.z;
+    if(denom<1e-6)
+      continue;
+    const t=
+      (
+        (en.x-origin.x)*dir.x+
+        (en.z-origin.z)*dir.z
+      )/denom;
     if(
-      proj<0 ||
-      proj>player.range
+      t<0 ||
+      t>player.range
     )
       continue;
-    const closestPoint=
-      origin.clone()
-        .add(
-          dir.clone()
-            .multiplyScalar(proj)
-        );
-    const distToLine=
-      closestPoint.distanceTo(
-        headPos
+    const hitX=
+      origin.x+dir.x*t;
+    const hitY=
+      origin.y+dir.y*t;
+    const hitZ=
+      origin.z+dir.z*t;
+    const horizDist=
+      Math.hypot(
+        hitX-en.x,
+        hitZ-en.z
       );
     if(
-      distToLine<.55 &&
-      proj<closestDist
+      horizDist<bodyRadius &&
+      t<closestDist
     ){
-      closestDist=proj;
+      closestDist=t;
       closestEnemy=en;
+      closestIsHead=
+        hitY>=headMinY &&
+        hitY<=headMaxY;
     }
   }
   let endDistance=
@@ -2490,12 +2544,17 @@ function fireWeaponRay(origin,dir){
       closestDist<wallDist
     )
   ){
-    closestEnemy.hp-=player.weaponDmg;
+    if(closestIsHead){
+      closestEnemy.hp=0;
+    }
+    else{
+      closestEnemy.hp-=player.weaponDmg;
+    }
     spawnGlowParticle(
       endPoint,
-      0xffcf60,
-      .5,
-      .12
+      closestIsHead?0xff3a30:0xffcf60,
+      closestIsHead?.7:.5,
+      closestIsHead?.2:.12
     );
     if(
       closestEnemy.hp<=0 &&
@@ -2505,7 +2564,11 @@ function fireWeaponRay(origin,dir){
       scene.remove(
         closestEnemy.group
       );
-      score+=100;
+      score+=
+        closestIsHead?150:100;
+      if(closestIsHead){
+        showMsg('HEADSHOT',700);
+      }
       const alive=
         enemies.filter(
           e=>!e.dead
@@ -2550,7 +2613,10 @@ function playerShoot(){
   ){
     return;
   }
-  player.fireCd=player.fireCdBase;
+  player.fireCd=
+    player.overdriveTimer>0
+    ? player.fireCdBase*.55
+    : player.fireCdBase;
   player.ammo--;
   const origin=
     camera.position.clone();
@@ -2611,105 +2677,144 @@ function playerShoot(){
 /* =========================================================
    EXACT WALL LINE OF SIGHT
 ========================================================= */
+function segmentIntersectsBox(
+  x0,z0,x1,z1,
+  minX,maxX,minZ,maxZ
+){
+  const dx=x1-x0;
+  const dz=z1-z0;
+  let tMin=0;
+  let tMax=1;
+  if(
+    Math.abs(dx)<0.000001
+  ){
+    if(
+      x0<minX ||
+      x0>maxX
+    ){
+      return false;
+    }
+  }
+  else{
+    let tx1=
+      (minX-x0)/dx;
+    let tx2=
+      (maxX-x0)/dx;
+    if(tx1>tx2){
+      const temp=tx1;
+      tx1=tx2;
+      tx2=temp;
+    }
+    tMin=
+      Math.max(
+        tMin,
+        tx1
+      );
+    tMax=
+      Math.min(
+        tMax,
+        tx2
+      );
+    if(tMin>tMax)
+      return false;
+  }
+  if(
+    Math.abs(dz)<0.000001
+  ){
+    if(
+      z0<minZ ||
+      z0>maxZ
+    ){
+      return false;
+    }
+  }
+  else{
+    let tz1=
+      (minZ-z0)/dz;
+    let tz2=
+      (maxZ-z0)/dz;
+    if(tz1>tz2){
+      const temp=tz1;
+      tz1=tz2;
+      tz2=temp;
+    }
+    tMin=
+      Math.max(
+        tMin,
+        tz1
+      );
+    tMax=
+      Math.min(
+        tMax,
+        tz2
+      );
+    if(tMin>tMax)
+      return false;
+  }
+  return (
+    tMax>=0 &&
+    tMin<=1
+  );
+}
 function segmentBlockedByWall(
   x0,z0,x1,z1
 ){
   for(const w of walls){
     if(w.broken)
       continue;
-    const minX=
-      w.x-w.w/2;
-    const maxX=
-      w.x+w.w/2;
-    const minZ=
-      w.z-w.d/2;
-    const maxZ=
-      w.z+w.d/2;
-    const dx=x1-x0;
-    const dz=z1-z0;
-    let tMin=0;
-    let tMax=1;
     if(
-      Math.abs(dx)<0.000001
-    ){
-      if(
-        x0<minX ||
-        x0>maxX
-      ){
-        continue;
-      }
-    }
-    else{
-      let tx1=
-        (minX-x0)/dx;
-      let tx2=
-        (maxX-x0)/dx;
-      if(tx1>tx2){
-        const temp=tx1;
-        tx1=tx2;
-        tx2=temp;
-      }
-      tMin=
-        Math.max(
-          tMin,
-          tx1
-        );
-      tMax=
-        Math.min(
-          tMax,
-          tx2
-        );
-      if(tMin>tMax)
-        continue;
-    }
-    if(
-      Math.abs(dz)<0.000001
-    ){
-      if(
-        z0<minZ ||
-        z0>maxZ
-      ){
-        continue;
-      }
-    }
-    else{
-      let tz1=
-        (minZ-z0)/dz;
-      let tz2=
-        (maxZ-z0)/dz;
-      if(tz1>tz2){
-        const temp=tz1;
-        tz1=tz2;
-        tz2=temp;
-      }
-      tMin=
-        Math.max(
-          tMin,
-          tz1
-        );
-      tMax=
-        Math.min(
-          tMax,
-          tz2
-        );
-      if(tMin>tMax)
-        continue;
-    }
-    if(
-      tMax>=0 &&
-      tMin<=1
+      segmentIntersectsBox(
+        x0,z0,x1,z1,
+        w.x-w.w/2,
+        w.x+w.w/2,
+        w.z-w.d/2,
+        w.z+w.d/2
+      )
     ){
       return true;
     }
   }
   return false;
 }
+/*
+  Cover objects (crates, barrels, sandbag rows,
+  lamp posts) also block line of sight, not just
+  the movement collision they already blocked —
+  otherwise defenders can "see" and shoot straight
+  through solid cover.
+*/
+function segmentBlockedByDecoration(
+  x0,z0,x1,z1
+){
+  for(const d of decorationColliders){
+    if(
+      segmentIntersectsBox(
+        x0,z0,x1,z1,
+        d.x-d.w/2,
+        d.x+d.w/2,
+        d.z-d.d/2,
+        d.z+d.d/2
+      )
+    ){
+      return true;
+    }
+  }
+  return false;
+}
+function lineOfSightBlocked(
+  x0,z0,x1,z1
+){
+  return (
+    segmentBlockedByWall(x0,z0,x1,z1) ||
+    segmentBlockedByDecoration(x0,z0,x1,z1)
+  );
+}
 /* =========================================================
    ENEMY SHOOTING
 ========================================================= */
 function enemyShoot(en){
   const blocked=
-    segmentBlockedByWall(
+    lineOfSightBlocked(
       en.x,
       en.z,
       player.x,
@@ -2930,7 +3035,7 @@ function triggerAbility(){
       deployShield();
       break;
     case 'ember':
-      torchCut();
+      activateOverdrive();
       break;
     case 'vesper':
       intelScan();
@@ -3001,23 +3106,11 @@ function explodeGrenade(pos){
       }
     }
   });
-  walls.forEach(w=>{
-    if(
-      w.broken ||
-      w.hp>=9999
-    )
-      return;
-    const d=
-      Math.hypot(
-        w.x-pos.x,
-        w.z-pos.z
-      );
-    if(d<3.2){
-      w.hp-=2.5;
-      if(w.hp<=0)
-        destroyWall(w);
-    }
-  });
+  /*
+    Frag Charge is intentionally anti-personnel only —
+    Siege is the sole operator who can breach walls, so
+    the grenade no longer damages wall structures.
+  */
   const pd=
     Math.hypot(
       player.x-pos.x,
@@ -3136,60 +3229,8 @@ function deployShield(){
   walls.push(shieldWall);
   showMsg('SHIELD DEPLOYED',1400);
 }
-function torchCut(){
-  const dir=
-    new THREE.Vector3();
-  camera.getWorldDirection(dir);
-  const flatDir=
-    new THREE.Vector3(dir.x,0,dir.z)
-      .normalize();
-  let best=null;
-  let bestDist=Infinity;
-  walls.forEach(w=>{
-    if(
-      w.broken ||
-      w.hp>=9999
-    )
-      return;
-    const toWall=
-      new THREE.Vector3(
-        w.x-player.x,
-        0,
-        w.z-player.z
-      );
-    const dist=toWall.length();
-    if(dist>4)
-      return;
-    const dot=
-      toWall.clone()
-        .normalize()
-        .dot(flatDir);
-    if(
-      dot>.55 &&
-      dist<bestDist
-    ){
-      bestDist=dist;
-      best=w;
-    }
-  });
-  if(best){
-    const pos=
-      new THREE.Vector3(
-        best.x,1.5,best.z
-      );
-    destroyWall(best);
-    spawnGlowParticle(
-      pos,0xff6a20,1.6,.4
-    );
-    spawnGlowParticle(
-      pos,0xffb060,.8,.25
-    );
-    showMsg('WALL TORCHED',1400);
-  }
-  else{
-    player.abilityCd=0;
-    showMsg('NO WALL IN RANGE',1200);
-  }
+function activateOverdrive(){
+  player.overdriveTimer=4;
 }
 function intelScan(){
   player.intelTimer=6;
@@ -3208,6 +3249,7 @@ function resetRound(){
   player.abilityCd=0;
   player.cloakTimer=0;
   player.intelTimer=0;
+  player.overdriveTimer=0;
   player.aimT=0;
   aiming=false;
   camera.fov=BASE_FOV;
@@ -3227,7 +3269,7 @@ function resetRound(){
   for(const g of grenades)
     scene.remove(g.mesh);
   grenades=[];
-  loadLevel(round-1);
+  loadLevel(currentLevel);
   roundTime=120;
   gameState='playing';
   plantProgress=0;
@@ -3237,6 +3279,9 @@ function resetRound(){
     .style.display='none';
   document
     .getElementById('cloakOverlay')
+    .style.opacity=0;
+  document
+    .getElementById('overdriveOverlay')
     .style.opacity=0;
   document
     .getElementById('intelHud')
@@ -3313,6 +3358,17 @@ function update(){
   else{
     document
       .getElementById('cloakOverlay')
+      .style.opacity=0;
+  }
+  if(player.overdriveTimer>0){
+    player.overdriveTimer-=dt;
+    document
+      .getElementById('overdriveOverlay')
+      .style.opacity=.9;
+  }
+  else{
+    document
+      .getElementById('overdriveOverlay')
       .style.opacity=0;
   }
   if(player.intelTimer>0){
@@ -3647,7 +3703,7 @@ function update(){
         en.z-player.z
       );
     const lineClear=
-      !segmentBlockedByWall(
+      !lineOfSightBlocked(
         en.x,
         en.z,
         player.x,
@@ -3723,7 +3779,7 @@ function update(){
       en.fireCd-=dt;
       if(
         en.fireCd<=0 &&
-        !segmentBlockedByWall(
+        !lineOfSightBlocked(
           en.x,
           en.z,
           player.x,
@@ -3887,6 +3943,7 @@ function winRound(){
   setTimeout(
     ()=>{
       round++;
+      currentLevel++;
       resetRound();
     },
     2400
@@ -4048,9 +4105,9 @@ const PLAYER_OPS=[
       aimFov:52
     },
     ability:{
-      name:'TORCH CUT',
-      cooldown:15,
-      desc:'Silently melts through the nearest wall right in front of you at close range.'
+      name:'OVERDRIVE',
+      cooldown:20,
+      desc:'Redlines your carbine for a few seconds, cutting time between shots by nearly half.'
     }
   },
   {
@@ -4095,6 +4152,7 @@ function applyOperatorLoadout(op){
   player.abilityCd=0;
   player.cloakTimer=0;
   player.intelTimer=0;
+  player.overdriveTimer=0;
   player.aimT=0;
   player.aimFov=op.weapon.aimFov;
   aiming=false;
@@ -4130,6 +4188,28 @@ function buildMenu(){
     grid.appendChild(card);
   });
 }
+let selectedMapIndex=0;
+function buildMapMenu(){
+  const grid=
+    document.getElementById('mapGrid');
+  grid.innerHTML='';
+  levelThemes.forEach((theme,i)=>{
+    const chip=
+      document.createElement('div');
+    chip.className=
+      'mapChip'+
+      (i===selectedMapIndex?' selected':'');
+    chip.textContent=theme.name;
+    chip.addEventListener('click',()=>{
+      selectedMapIndex=i;
+      document
+        .querySelectorAll('.mapChip')
+        .forEach(c=>c.classList.remove('selected'));
+      chip.classList.add('selected');
+    });
+    grid.appendChild(chip);
+  });
+}
 document
   .getElementById('deployBtn')
   .addEventListener('click',()=>{
@@ -4137,6 +4217,7 @@ document
       PLAYER_OPS[selectedOperatorIndex];
     applyOperatorLoadout(op);
     round=1;
+    currentLevel=selectedMapIndex;
     score=0;
     document
       .getElementById('menuScreen')
@@ -4148,6 +4229,7 @@ document
    START
 ========================================================= */
 buildMenu();
+buildMapMenu();
 loadLevel(0);
 updateHud();
 requestAnimationFrame(update);
