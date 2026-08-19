@@ -49,6 +49,7 @@ canvas{
   height:20px;
   pointer-events:none;
   z-index:5;
+  transition:opacity .08s linear;
 }
 #crosshair:before,
 #crosshair:after{
@@ -68,6 +69,33 @@ canvas{
   left:0;
   width:20px;
   height:2px;
+}
+/* MARKSMAN SCOPE OVERLAY */
+#scopeOverlay{
+  position:fixed;
+  inset:0;
+  z-index:7;
+  pointer-events:none;
+  background:radial-gradient(circle at 50% 50%, transparent 0, transparent 210px, #000 320px);
+  opacity:0;
+}
+#scopeOverlay:before,
+#scopeOverlay:after{
+  content:'';
+  position:absolute;
+  top:50%;
+  left:50%;
+  background:rgba(10,10,10,.85);
+}
+#scopeOverlay:before{
+  width:1px;
+  height:220px;
+  transform:translate(-50%,-50%);
+}
+#scopeOverlay:after{
+  width:220px;
+  height:1px;
+  transform:translate(-50%,-50%);
 }
 /* HUD */
 #hud{
@@ -153,6 +181,21 @@ canvas{
   display:flex;
   align-items:center;
   justify-content:space-between;
+}
+#intelHud{
+  position:fixed;
+  top:16px;
+  right:16px;
+  z-index:5;
+  font-size:11px;
+  letter-spacing:.5px;
+  line-height:1.6;
+  color:#000;
+  background:rgba(216,212,232,.92);
+  padding:8px 12px;
+  border:1px solid #3a2a3f;
+  display:none;
+  min-width:170px;
 }
 #detonate{
   position:fixed;
@@ -325,9 +368,9 @@ canvas{
   <div id="menuFooter">
     <div id="controlsInfo">
       <b>WASD</b> MOVE &middot; <b>MOUSE</b> LOOK &middot; <b>CLICK</b> SHOOT &middot;
-      <b>E</b> BREACH/PLANT &middot; <b>Q</b> OPERATOR ABILITY &middot; <b>SHIFT</b> SPRINT
+      <b>RIGHT-CLICK</b> AIM &middot; <b>E</b> BREACH/PLANT &middot; <b>Q</b> OPERATOR ABILITY
       <br>
-      <b>C</b> CROUCH &middot; <b>CTRL</b> CRAWL &middot; <b>R</b> RELOAD
+      <b>SHIFT</b> SPRINT &middot; <b>C</b> CROUCH &middot; <b>CTRL</b> CRAWL &middot; <b>R</b> RELOAD
     </div>
     <button id="deployBtn">DEPLOY</button>
     <div id="hint">
@@ -338,6 +381,7 @@ canvas{
 <div id="vignette"></div>
 <div id="cloakOverlay"></div>
 <div id="crosshair"></div>
+<div id="scopeOverlay"></div>
 <div id="damageOverlay"></div>
 <div id="hud">
   <div>
@@ -380,13 +424,14 @@ canvas{
     <div class="bar"><i id="abilityBar" style="background:#7fd8ff;width:120px;"></i></div>
   </div>
 </div>
+<div id="intelHud"></div>
 <div id="detonate">
   DETONATION IN
   <span id="detVal">12</span>s
 </div>
 <div id="msg"></div>
 <div id="controls">
-  WASD &middot; SHIFT SPRINT &middot; C CROUCH &middot; CTRL CRAWL &middot; E ACTION &middot; Q ABILITY
+  WASD &middot; RIGHT-CLICK AIM &middot; SHIFT SPRINT &middot; C CROUCH &middot; CTRL CRAWL &middot; E ACTION &middot; Q ABILITY
 </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -1617,7 +1662,10 @@ const player={
   noise:1,
   stance:'standing',
   abilityCd:0,
-  cloakTimer:0
+  cloakTimer:0,
+  intelTimer:0,
+  aimT:0,
+  aimFov:50
 };
 camera.position.set(
   player.x,
@@ -1647,17 +1695,21 @@ document
           keys[key]=false;
         }
         mouseDown=false;
+        aiming=false;
       }
     }
   );
+const BASE_FOV=75;
 document.addEventListener(
   'mousemove',
   e=>{
     if(!locked)return;
+    const sens=
+      .0022*(camera.fov/BASE_FOV);
     player.yaw-=
-      e.movementX*.0022;
+      e.movementX*sens;
     player.pitch-=
-      e.movementY*.0022;
+      e.movementY*sens;
     player.pitch=
       Math.max(
         -1.3,
@@ -1680,14 +1732,17 @@ canvasEl.addEventListener(
    KEYBOARD SHORTCUT PROTECTION
 ========================================================= */
 let mouseDown=false;
+let aiming=false;
 document.addEventListener(
   'mousedown',
   e=>{
-    if(
-      locked &&
-      e.button===0
-    ){
+    if(!locked)
+      return;
+    if(e.button===0){
       mouseDown=true;
+    }
+    else if(e.button===2){
+      aiming=true;
     }
   }
 );
@@ -1697,7 +1752,19 @@ document.addEventListener(
     if(e.button===0){
       mouseDown=false;
     }
+    else if(e.button===2){
+      aiming=false;
+    }
   }
+);
+/*
+  Right-click is used to aim down sights, so the
+  browser's native right-click context menu must
+  be suppressed while playing.
+*/
+canvasEl.addEventListener(
+  'contextmenu',
+  e=>e.preventDefault()
 );
 /*
   Only these keys are considered game controls.
@@ -2221,21 +2288,19 @@ chargingHandle.position.set(
   -.56
 );
 gunGroup.add(chargingHandle);
-let scopeMesh=null;
+let weaponExtras=[];
 function updateWeaponModel(op){
   gunGroup.scale.set(1,1,1);
   barrel.scale.set(1,1,1);
-  if(scopeMesh){
-    gunGroup.remove(scopeMesh);
-    scopeMesh=null;
-  }
+  weaponExtras.forEach(m=>gunGroup.remove(m));
+  weaponExtras=[];
   if(op.id==='siege'){
     gunGroup.scale.set(1.05,1.05,.72);
     barrel.scale.set(1.7,1,.55);
   }
   else if(op.id==='warden'){
     gunGroup.scale.set(1,1,1.4);
-    scopeMesh=
+    const scopeMesh=
       new THREE.Mesh(
         new THREE.CylinderGeometry(
           .045,.045,.34,10
@@ -2251,9 +2316,68 @@ function updateWeaponModel(op){
       .34,.02,-.72
     );
     gunGroup.add(scopeMesh);
+    weaponExtras.push(scopeMesh);
   }
   else if(op.id==='phantom'){
     gunGroup.scale.set(.85,.9,.76);
+  }
+  else if(op.id==='ember'){
+    gunGroup.scale.set(.97,.97,.88);
+    const torchNozzle=
+      new THREE.Mesh(
+        new THREE.CylinderGeometry(
+          .035,.05,.22,8
+        ),
+        new THREE.MeshStandardMaterial({
+          color:0xff5a20,
+          emissive:0xff3a10,
+          emissiveIntensity:.6,
+          metalness:.4,
+          roughness:.4
+        })
+      );
+    torchNozzle.rotation.z=Math.PI/2;
+    torchNozzle.position.set(
+      .2,-.18,-.9
+    );
+    gunGroup.add(torchNozzle);
+    weaponExtras.push(torchNozzle);
+    const tank=
+      new THREE.Mesh(
+        new THREE.CylinderGeometry(
+          .07,.07,.32,10
+        ),
+        new THREE.MeshStandardMaterial({
+          color:0x8a3020,
+          metalness:.5,
+          roughness:.5
+        })
+      );
+    tank.position.set(
+      .44,-.32,-.3
+    );
+    gunGroup.add(tank);
+    weaponExtras.push(tank);
+  }
+  else if(op.id==='vesper'){
+    gunGroup.scale.set(.92,.92,.95);
+    const suppressor=
+      new THREE.Mesh(
+        new THREE.CylinderGeometry(
+          .05,.05,.42,10
+        ),
+        new THREE.MeshStandardMaterial({
+          color:0x1a1a1a,
+          metalness:.75,
+          roughness:.35
+        })
+      );
+    suppressor.rotation.x=Math.PI/2;
+    suppressor.position.set(
+      .34,-.22,-1.7
+    );
+    gunGroup.add(suppressor);
+    weaponExtras.push(suppressor);
   }
 }
 /* =========================================================
@@ -2460,7 +2584,8 @@ function playerShoot(){
     i++
   ){
     const spread=
-      player.spread||0;
+      (player.spread||0)*
+      (1-player.aimT*.75);
     const dir=
       baseDir.clone()
         .addScaledVector(
@@ -2804,6 +2929,12 @@ function triggerAbility(){
     case 'warden':
       deployShield();
       break;
+    case 'ember':
+      torchCut();
+      break;
+    case 'vesper':
+      intelScan();
+      break;
   }
 }
 function throwFragCharge(){
@@ -3005,6 +3136,65 @@ function deployShield(){
   walls.push(shieldWall);
   showMsg('SHIELD DEPLOYED',1400);
 }
+function torchCut(){
+  const dir=
+    new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const flatDir=
+    new THREE.Vector3(dir.x,0,dir.z)
+      .normalize();
+  let best=null;
+  let bestDist=Infinity;
+  walls.forEach(w=>{
+    if(
+      w.broken ||
+      w.hp>=9999
+    )
+      return;
+    const toWall=
+      new THREE.Vector3(
+        w.x-player.x,
+        0,
+        w.z-player.z
+      );
+    const dist=toWall.length();
+    if(dist>4)
+      return;
+    const dot=
+      toWall.clone()
+        .normalize()
+        .dot(flatDir);
+    if(
+      dot>.55 &&
+      dist<bestDist
+    ){
+      bestDist=dist;
+      best=w;
+    }
+  });
+  if(best){
+    const pos=
+      new THREE.Vector3(
+        best.x,1.5,best.z
+      );
+    destroyWall(best);
+    spawnGlowParticle(
+      pos,0xff6a20,1.6,.4
+    );
+    spawnGlowParticle(
+      pos,0xffb060,.8,.25
+    );
+    showMsg('WALL TORCHED',1400);
+  }
+  else{
+    player.abilityCd=0;
+    showMsg('NO WALL IN RANGE',1200);
+  }
+}
+function intelScan(){
+  player.intelTimer=6;
+  showMsg('DEFENDER POSITIONS TRACKED',1600);
+}
 /* =========================================================
    RESET ROUND
 ========================================================= */
@@ -3017,6 +3207,11 @@ function resetRound(){
   player.stance='standing';
   player.abilityCd=0;
   player.cloakTimer=0;
+  player.intelTimer=0;
+  player.aimT=0;
+  aiming=false;
+  camera.fov=BASE_FOV;
+  camera.updateProjectionMatrix();
   for(const b of bulletTracers)
     scene.remove(b.mesh);
   bulletTracers=[];
@@ -3042,6 +3237,15 @@ function resetRound(){
     .style.display='none';
   document
     .getElementById('cloakOverlay')
+    .style.opacity=0;
+  document
+    .getElementById('intelHud')
+    .style.display='none';
+  document
+    .getElementById('crosshair')
+    .style.opacity=1;
+  document
+    .getElementById('scopeOverlay')
     .style.opacity=0;
   updateHud();
 }
@@ -3111,6 +3315,77 @@ function update(){
       .getElementById('cloakOverlay')
       .style.opacity=0;
   }
+  if(player.intelTimer>0){
+    player.intelTimer-=dt;
+    const intelEl=
+      document.getElementById('intelHud');
+    intelEl.style.display='block';
+    const camForward=
+      new THREE.Vector3();
+    camera.getWorldDirection(camForward);
+    camForward.y=0;
+    camForward.normalize();
+    const camRight=
+      new THREE.Vector3()
+        .crossVectors(
+          camForward,
+          new THREE.Vector3(0,1,0)
+        )
+        .normalize();
+    const bearingNames=[
+      'AHEAD','AHEAD-R','RIGHT','BEHIND-R',
+      'BEHIND','BEHIND-L','LEFT','AHEAD-L'
+    ];
+    const rows=
+      enemies
+        .filter(en=>!en.dead)
+        .map(en=>{
+          const toEnemy=
+            new THREE.Vector3(
+              en.x-player.x,
+              0,
+              en.z-player.z
+            );
+          const dist=toEnemy.length();
+          toEnemy.normalize();
+          const fwdDot=
+            camForward.dot(toEnemy);
+          const rightDot=
+            camRight.dot(toEnemy);
+          const angle=
+            Math.atan2(rightDot,fwdDot);
+          const idx=
+            (
+              (
+                Math.round(
+                  angle/(Math.PI/4)
+                )%8
+              )+8
+            )%8;
+          return {
+            dist,
+            label:bearingNames[idx]
+          };
+        })
+        .sort((a,b)=>a.dist-b.dist)
+        .slice(0,5)
+        .map(r=>
+          'DEFENDER &middot; '+
+          Math.round(r.dist)+'m &middot; '+
+          r.label
+        )
+        .join('<br>');
+    intelEl.innerHTML=
+      '<div style="margin-bottom:4px;font-weight:bold;">INTEL SCAN ['+
+      Math.ceil(player.intelTimer)+
+      's]</div>'+
+      (rows||'NO DEFENDERS DETECTED');
+  }
+  else{
+    document
+      .getElementById('intelHud')
+      .style.display='none';
+  }
   let mx=0;
   let mz=0;
   if(keys['w']) mz-=1;
@@ -3144,6 +3419,26 @@ function update(){
   if(player.cloakTimer>0){
     baseSpeed*=1.3;
   }
+  player.aimT+=
+    (
+      (aiming?1:0)-player.aimT
+    )*Math.min(1,dt*9);
+  baseSpeed*=
+    (1-player.aimT*.45);
+  camera.fov=
+    BASE_FOV+
+    (player.aimFov-BASE_FOV)*
+    player.aimT;
+  camera.updateProjectionMatrix();
+  document.getElementById('crosshair').style.opacity=
+    1-player.aimT*.85;
+  document.getElementById('scopeOverlay').style.opacity=
+    (
+      currentOperator &&
+      currentOperator.id==='warden'
+    )
+    ? player.aimT
+    : 0;
   const spd=baseSpeed*dt;
   camera.rotation.order='YXZ';
   camera.rotation.y=player.yaw;
@@ -3209,16 +3504,21 @@ function update(){
     player.height,
     player.z
   );
+  const bobAmount=
+    1-player.aimT*.7;
+  let bobY=0;
   if(moveDir.lengthSq()>0){
-    const bob=
+    bobY=
       Math.sin(
         performance.now()*.012
-      )*.012;
-    gunGroup.position.y=bob;
+      )*.012*bobAmount;
   }
-  else{
-    gunGroup.position.y=0;
-  }
+  gunGroup.position.x=
+    -.34*player.aimT;
+  gunGroup.position.y=
+    bobY+.09*player.aimT;
+  gunGroup.position.z=
+    .22*player.aimT;
   if(player.fireCd>0)
     player.fireCd-=dt;
   if(player.reloadCd>0){
@@ -3648,7 +3948,8 @@ const PLAYER_OPS=[
       reload:1.5,
       pellets:1,
       spread:.004,
-      range:60
+      range:60,
+      aimFov:55
     },
     ability:{
       name:'FRAG CHARGE',
@@ -3671,7 +3972,8 @@ const PLAYER_OPS=[
       reload:1.2,
       pellets:1,
       spread:.012,
-      range:40
+      range:40,
+      aimFov:60
     },
     ability:{
       name:'CLOAK PULSE',
@@ -3694,7 +3996,8 @@ const PLAYER_OPS=[
       reload:2.2,
       pellets:8,
       spread:.09,
-      range:20
+      range:20,
+      aimFov:68
     },
     ability:{
       name:'BREACH CHARGE',
@@ -3717,12 +4020,61 @@ const PLAYER_OPS=[
       reload:1.8,
       pellets:1,
       spread:.001,
-      range:90
+      range:90,
+      aimFov:30
     },
     ability:{
       name:'DEPLOY SHIELD',
       cooldown:22,
       desc:'Erects a temporary bullet-blocking barrier in front of you.'
+    }
+  },
+  {
+    id:'ember',
+    name:'EMBER',
+    role:'FLANKER',
+    accent:'#ff7a30',
+    maxHp:100,
+    speedMul:1.05,
+    weapon:{
+      name:'SB-9 BURST CARBINE',
+      dmg:26,
+      fireCd:.16,
+      mag:25,
+      reload:1.6,
+      pellets:1,
+      spread:.003,
+      range:65,
+      aimFov:52
+    },
+    ability:{
+      name:'TORCH CUT',
+      cooldown:15,
+      desc:'Silently melts through the nearest wall right in front of you at close range.'
+    }
+  },
+  {
+    id:'vesper',
+    name:'VESPER',
+    role:'SHADOW',
+    accent:'#9a8aff',
+    maxHp:90,
+    speedMul:1.08,
+    weapon:{
+      name:'VX-SILENCED SMG',
+      dmg:16,
+      fireCd:.09,
+      mag:20,
+      reload:1.0,
+      pellets:1,
+      spread:.008,
+      range:35,
+      aimFov:58
+    },
+    ability:{
+      name:'INTEL SCAN',
+      cooldown:24,
+      desc:'Reveals the distance and bearing of every living defender for several seconds.'
     }
   }
 ];
@@ -3742,6 +4094,12 @@ function applyOperatorLoadout(op){
   player.reloadTime=op.weapon.reload;
   player.abilityCd=0;
   player.cloakTimer=0;
+  player.intelTimer=0;
+  player.aimT=0;
+  player.aimFov=op.weapon.aimFov;
+  aiming=false;
+  camera.fov=BASE_FOV;
+  camera.updateProjectionMatrix();
   updateWeaponModel(op);
 }
 function buildMenu(){
