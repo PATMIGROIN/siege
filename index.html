@@ -220,6 +220,21 @@ canvas{
   border:1px solid #6b2a2a;
   display:none;
 }
+#cameraHud{
+  position:fixed;
+  top:16px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:6;
+  font-size:12px;
+  font-weight:bold;
+  letter-spacing:2px;
+  color:#000;
+  background:rgba(190,216,232,.92);
+  padding:8px 16px;
+  border:1px solid #2a4a6b;
+  display:none;
+}
 #msg{
   position:fixed;
   top:38%;
@@ -338,6 +353,36 @@ canvas{
   color:#c9d94a;
   box-shadow:0 0 10px rgba(201,217,74,.3);
 }
+#sideGrid{
+  display:flex;
+  gap:10px;
+  justify-content:center;
+  margin-bottom:6px;
+}
+.sideChip{
+  padding:8px 22px;
+  border:1px solid #3a3f2a;
+  background:rgba(20,24,16,.85);
+  cursor:pointer;
+  font-size:12px;
+  font-weight:bold;
+  letter-spacing:2px;
+  color:#c9c9b0;
+  transition:border-color .15s, box-shadow .15s, color .15s;
+}
+.sideChip:hover{
+  color:#e8e6d8;
+}
+.sideChip.selected{
+  border-color:#d9524a;
+  color:#d9524a;
+  box-shadow:0 0 10px rgba(217,82,74,.3);
+}
+.sideChip.selected.defenseSelected{
+  border-color:#5aa8d9;
+  color:#5aa8d9;
+  box-shadow:0 0 10px rgba(90,168,217,.3);
+}
 #menuFooter{
   margin-top:24px;
   display:flex;
@@ -404,6 +449,8 @@ canvas{
   <div id="operatorGrid"></div>
   <p class="menuSub" style="margin-top:22px;">SELECT MAP</p>
   <div id="mapGrid"></div>
+  <p class="menuSub" style="margin-top:22px;">SELECT SIDE</p>
+  <div id="sideGrid"></div>
   <div id="menuFooter">
     <div id="controlsInfo">
       <b>WASD</b> MOVE &middot; <b>MOUSE</b> LOOK &middot; <b>CLICK</b> SHOOT &middot;
@@ -444,7 +491,13 @@ canvas{
     TIME <span id="timeVal">120</span>s
   </div>
   <div>
-    DEFENDERS LEFT <span id="enemyVal">5</span>
+    ENEMIES LEFT <span id="enemyVal">5</span>
+  </div>
+  <div>
+    ALLIES LEFT <span id="allyVal">4</span>
+  </div>
+  <div>
+    SIDE <span id="sideVal">ATTACK</span>
   </div>
   <div>
     SCORE <span id="scoreVal">0</span>
@@ -465,9 +518,12 @@ canvas{
   </div>
 </div>
 <div id="intelHud"></div>
+<div id="cameraHud"></div>
 <div id="detonate">
   DETONATION IN
   <span id="detVal">12</span>s
+  <br>
+  DEFUSE <span id="defuseVal">0%</span>
 </div>
 <div id="msg"></div>
 <div id="controls">
@@ -505,6 +561,8 @@ renderer.setPixelRatio(
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.outputEncoding=THREE.sRGBEncoding;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.15;
 document
   .getElementById('canvasWrap')
   .appendChild(renderer.domElement);
@@ -516,6 +574,7 @@ window.addEventListener('resize',()=>{
     window.innerWidth,
     window.innerHeight
   );
+  updateCameraAspects();
 });
 /* =========================================================
    LIGHTING
@@ -580,6 +639,47 @@ function makeGlowTexture(){
 const glowTex=makeGlowTexture();
 let particles=[];
 let flashLights=[];
+/* =========================================================
+   AMBIENT DUST MOTES
+========================================================= */
+const DUST_COUNT=450;
+const dustGeo=new THREE.BufferGeometry();
+const dustPositions=new Float32Array(DUST_COUNT*3);
+for(let i=0;i<DUST_COUNT;i++){
+  dustPositions[i*3]=Math.random()*140-70;
+  dustPositions[i*3+1]=Math.random()*8+.15;
+  dustPositions[i*3+2]=Math.random()*140-70;
+}
+dustGeo.setAttribute(
+  'position',
+  new THREE.BufferAttribute(dustPositions,3)
+);
+const dustMat=
+  new THREE.PointsMaterial({
+    color:0xd9d9c0,
+    size:.045,
+    transparent:true,
+    opacity:.32,
+    depthWrite:false,
+    blending:THREE.AdditiveBlending,
+    sizeAttenuation:true
+  });
+const dustPoints=
+  new THREE.Points(dustGeo,dustMat);
+scene.add(dustPoints);
+function updateDust(dt){
+  const pos=dustGeo.attributes.position;
+  for(let i=0;i<DUST_COUNT;i++){
+    let y=pos.getY(i)+dt*.12;
+    let x=pos.getX(i)+Math.sin(i+performance.now()*.0003)*dt*.05;
+    if(y>8.2) y=.15;
+    pos.setY(i,y);
+    pos.setX(i,x);
+  }
+  pos.needsUpdate=true;
+  dustPoints.position.x=camera.position.x;
+  dustPoints.position.z=camera.position.z;
+}
 function spawnGlowParticle(pos,color,size,life,vel){
   const mat=
     new THREE.SpriteMaterial({
@@ -1079,11 +1179,64 @@ function getLevel(){
 /* =========================================================
    WALLS
 ========================================================= */
+function makeWallTexture(){
+  const c=document.createElement('canvas');
+  c.width=256;
+  c.height=256;
+  const ctx=c.getContext('2d');
+  ctx.fillStyle='#ffffff';
+  ctx.fillRect(0,0,256,256);
+  for(let i=0;i<3400;i++){
+    const x=Math.random()*256;
+    const y=Math.random()*256;
+    const v=180+Math.random()*70;
+    ctx.fillStyle=
+      'rgba('+v+','+v+','+v+','+(.04+Math.random()*.13)+')';
+    ctx.fillRect(
+      x,y,
+      1+Math.random()*3,
+      1+Math.random()*3
+    );
+  }
+  ctx.strokeStyle='rgba(0,0,0,.1)';
+  ctx.lineWidth=1;
+  const rows=8;
+  const rowH=256/rows;
+  for(let r=0;r<=rows;r++){
+    ctx.beginPath();
+    ctx.moveTo(0,r*rowH);
+    ctx.lineTo(256,r*rowH);
+    ctx.stroke();
+  }
+  for(let r=0;r<rows;r++){
+    const offset=(r%2)*24;
+    for(let x=-24;x<=256+24;x+=48){
+      ctx.beginPath();
+      ctx.moveTo(x+offset,r*rowH);
+      ctx.lineTo(x+offset,(r+1)*rowH);
+      ctx.stroke();
+    }
+  }
+  for(let i=0;i<28;i++){
+    const x=Math.random()*256;
+    const y=Math.random()*256;
+    ctx.fillStyle='rgba(0,0,0,'+(.05+Math.random()*.08)+')';
+    ctx.beginPath();
+    ctx.arc(x,y,4+Math.random()*10,0,Math.PI*2);
+    ctx.fill();
+  }
+  const tex=new THREE.CanvasTexture(c);
+  tex.wrapS=THREE.RepeatWrapping;
+  tex.wrapT=THREE.RepeatWrapping;
+  tex.repeat.set(3,1.4);
+  return tex;
+}
 const wallMat=
   new THREE.MeshStandardMaterial({
     color:0x75694f,
-    roughness:.82,
-    metalness:.03
+    roughness:.85,
+    metalness:.04,
+    map:makeWallTexture()
   });
 let walls=[];
 function makeWall(
@@ -1409,6 +1562,140 @@ function applySiteFromTheme(theme){
   );
 }
 /* =========================================================
+   BOMB
+   A literal bomb device that appears at the site once
+   the attacking side finishes planting. Blinks faster
+   as detonation approaches.
+========================================================= */
+const bombGroup=new THREE.Group();
+const bombCase=
+  new THREE.Mesh(
+    new THREE.BoxGeometry(.5,.28,.34),
+    new THREE.MeshStandardMaterial({
+      color:0x1a1a1a,
+      metalness:.6,
+      roughness:.4
+    })
+  );
+bombCase.position.y=.14;
+bombGroup.add(bombCase);
+const bombLightMat=
+  new THREE.MeshBasicMaterial({
+    color:0xff2020
+  });
+const bombLight=
+  new THREE.Mesh(
+    new THREE.SphereGeometry(.05,8,8),
+    bombLightMat
+  );
+bombLight.position.set(0,.29,.1);
+bombGroup.add(bombLight);
+const bombGlowSprite=
+  new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map:glowTex,
+      color:0xff2020,
+      transparent:true,
+      opacity:.8,
+      blending:THREE.AdditiveBlending,
+      depthWrite:false
+    })
+  );
+bombGlowSprite.scale.set(.6,.6,.6);
+bombGlowSprite.position.set(0,.29,.1);
+bombGroup.add(bombGlowSprite);
+bombGroup.visible=false;
+scene.add(bombGroup);
+function showBomb(){
+  bombGroup.position.set(
+    site.x,0,site.z
+  );
+  bombGroup.visible=true;
+}
+function hideBomb(){
+  bombGroup.visible=false;
+}
+/* =========================================================
+   DEFENSE CAMERAS
+   Three fixed wall-mounted cameras around the bomb
+   site. When playing defense, number keys 1-3 cut the
+   view to a camera's live feed so you can watch the
+   site without holding an angle in person.
+========================================================= */
+const camPropGroups=[];
+for(let i=0;i<3;i++){
+  const g=new THREE.Group();
+  const box=
+    new THREE.Mesh(
+      new THREE.BoxGeometry(.22,.22,.3),
+      new THREE.MeshStandardMaterial({
+        color:0x14161a,
+        metalness:.7,
+        roughness:.35
+      })
+    );
+  g.add(box);
+  const lens=
+    new THREE.Mesh(
+      new THREE.CylinderGeometry(.06,.06,.08,10),
+      new THREE.MeshStandardMaterial({
+        color:0x2a3a4a,
+        emissive:0x2a5a8a,
+        emissiveIntensity:.6,
+        metalness:.8,
+        roughness:.2
+      })
+    );
+  lens.rotation.x=Math.PI/2;
+  lens.position.z=.18;
+  g.add(lens);
+  scene.add(g);
+  camPropGroups.push(g);
+}
+const mapCameras=[0,1,2].map(()=>{
+  const c=
+    new THREE.PerspectiveCamera(
+      70,
+      window.innerWidth/window.innerHeight,
+      .1,
+      500
+    );
+  return c;
+});
+function placeMapCameras(theme){
+  const angles=[.4,2.6,4.8];
+  angles.forEach((ang,i)=>{
+    const radius=11;
+    let cx=
+      theme.site.x+
+      Math.cos(ang)*radius;
+    let cz=
+      theme.site.z+
+      Math.sin(ang)*radius;
+    cx=Math.max(-38,Math.min(38,cx));
+    cz=Math.max(-38,Math.min(38,cz));
+    camPropGroups[i].position.set(
+      cx,2.6,cz
+    );
+    camPropGroups[i].lookAt(
+      theme.site.x,1.2,theme.site.z
+    );
+    mapCameras[i].position.set(
+      cx,2.5,cz
+    );
+    mapCameras[i].lookAt(
+      theme.site.x,1,theme.site.z
+    );
+  });
+}
+function updateCameraAspects(){
+  mapCameras.forEach(c=>{
+    c.aspect=
+      window.innerWidth/window.innerHeight;
+    c.updateProjectionMatrix();
+  });
+}
+/* =========================================================
    ENEMY OPERATOR MODEL
 ========================================================= */
 function buildOperator(
@@ -1593,61 +1880,103 @@ function buildOperator(
   return group;
 }
 /* =========================================================
-   ENEMIES
+   TEAMS / BOTS
+   5v5: the player plus 4 allied bots on one side,
+   5 opposing bots (slightly "better" — more HP and
+   accuracy) on the other. Every bot is assigned a
+   real operator loadout from PLAYER_OPS, so they use
+   the same weapons/fire-rate/range as the player.
+   `enemies` = the opposing team (always hostile to
+   the player and to allies). `allies` = the player's
+   own teammates (never targetable by the player).
 ========================================================= */
 let enemies=[];
-const enemyTypeStats={
-  standard:{hp:60,speed:.045},
-  heavy:{hp:90,speed:.036},
-  robotic:{hp:55,speed:.05},
-  ghost:{hp:45,speed:.06},
-  arctic:{hp:100,speed:.03},
-  toxic:{hp:50,speed:.05},
-  raider:{hp:50,speed:.055},
-  inferno:{hp:55,speed:.065}
-};
-function spawnEnemies(){
+let allies=[];
+const ATTACK_PALETTE=[0x7a2a2a,0x2a1a1a];
+const DEFENSE_PALETTE=[0x24384a,0x18242e];
+function makeBot(pos,op,team,isBetter){
+  const palette=
+    team==='attack'
+    ?ATTACK_PALETTE
+    :DEFENSE_PALETTE;
+  const theme=getLevel();
+  const group=
+    buildOperator(
+      palette[0],
+      palette[1],
+      theme.enemyType
+    );
+  group.position.set(
+    pos.x+(Math.random()*1.6-.8),
+    0,
+    pos.z+(Math.random()*1.6-.8)
+  );
+  scene.add(group);
+  const hpMul=isBetter?1.15:1;
+  const dmgMul=isBetter?1.1:1;
+  return {
+    group,
+    x:group.position.x,
+    z:group.position.z,
+    r:.5,
+    team,
+    op,
+    hp:op.maxHp*hpMul,
+    maxHp:op.maxHp*hpMul,
+    speed:5.2*op.speedMul*.6,
+    weaponDmg:op.weapon.dmg*dmgMul,
+    fireCdBase:op.weapon.fireCd,
+    range:op.weapon.range,
+    accuracyMul:isBetter?1.18:1,
+    fireCd:0,
+    alert:false,
+    dead:false,
+    isBot:true,
+    walkT:Math.random()*10
+  };
+}
+function spawnMatch(){
   enemies.forEach(
     e=>scene.remove(e.group)
   );
+  allies.forEach(
+    a=>scene.remove(a.group)
+  );
   enemies=[];
+  allies=[];
   const theme=getLevel();
   const spots=theme.spots;
-  const palettes=theme.palettes;
-  const stats=
-    enemyTypeStats[theme.enemyType]||
-    enemyTypeStats.standard;
-  for(let i=0;i<spots.length;i++){
-    const s=spots[i];
-    const pal=
-      palettes[
-        i%palettes.length
-      ];
-    const group=
-      buildOperator(
-        pal[0],
-        pal[1],
-        theme.enemyType
-      );
-    group.position.set(
-      s.x+(Math.random()*2-1),
-      0,
-      s.z+(Math.random()*2-1)
-    );
-    scene.add(group);
-    enemies.push({
-      group,
-      x:group.position.x,
-      z:group.position.z,
-      r:.5,
-      hp:stats.hp,
-      maxHp:stats.hp,
-      speed:stats.speed,
-      fireCd:0,
-      alert:false,
-      dead:false,
-      walkT:Math.random()*10
+  const enemyTeam=
+    player.team==='attack'
+    ?'defense'
+    :'attack';
+  const allyTeam=player.team;
+  const atkSpawn=
+    ()=>({
+      x:-30+(Math.random()*5-2.5),
+      z:0+(Math.random()*5-2.5)
     });
+  for(let i=0;i<5;i++){
+    const op=
+      PLAYER_OPS[i%PLAYER_OPS.length];
+    const pos=
+      enemyTeam==='defense'
+      ?spots[i]
+      :atkSpawn();
+    enemies.push(
+      makeBot(pos,op,enemyTeam,true)
+    );
+  }
+  for(let i=0;i<4;i++){
+    const op=
+      PLAYER_OPS[(i+2)%PLAYER_OPS.length];
+    const pos=
+      allyTeam==='defense'
+      ?spots[i+1]
+      :atkSpawn();
+    allies.push(
+      makeBot(pos,op,allyTeam,false)
+    );
   }
 }
 /* =========================================================
@@ -1668,7 +1997,8 @@ function loadLevel(idx){
   applySiteFromTheme(theme);
   clearDecorations();
   addDecorations();
-  spawnEnemies();
+  placeMapCameras(theme);
+  spawnMatch();
 }
 /* =========================================================
    PLAYER
@@ -1706,7 +2036,8 @@ const player={
   intelTimer:0,
   overdriveTimer:0,
   aimT:0,
-  aimFov:50
+  aimFov:50,
+  team:'attack'
 };
 camera.position.set(
   player.x,
@@ -1744,7 +2075,8 @@ const BASE_FOV=75;
 document.addEventListener(
   'mousemove',
   e=>{
-    if(!locked)return;
+    if(!locked||viewingCamIndex>=0)
+      return;
     const sens=
       .0022*(camera.fov/BASE_FOV);
     player.yaw-=
@@ -1826,7 +2158,10 @@ const gameplayKeys=new Set([
   'c',
   'e',
   'r',
-  'q'
+  'q',
+  '1',
+  '2',
+  '3'
 ]);
 const keys={};
 window.addEventListener(
@@ -1846,6 +2181,21 @@ window.addEventListener(
     keys[key]=true;
     if(key==='q'){
       triggerAbility();
+    }
+    if(
+      (key==='1'||key==='2'||key==='3') &&
+      player.team==='defense' &&
+      (
+        gameState==='playing' ||
+        gameState==='planting' ||
+        gameState==='planted'
+      )
+    ){
+      const idx=parseInt(key,10)-1;
+      viewingCamIndex=
+        viewingCamIndex===idx
+        ?-1
+        :idx;
     }
   },
   {
@@ -1877,9 +2227,11 @@ let roundTime=120;
 let gameState='menu';
 let plantProgress=0;
 let plantTimer=0;
+let defuseProgress=0;
 let msgTimeout=null;
 let grenades=[];
 let currentOperator=null;
+let viewingCamIndex=-1;
 function showMsg(text,ms=2000){
   const el=
     document.getElementById('msg');
@@ -1909,6 +2261,10 @@ function updateHud(){
     Math.max(0,Math.ceil(roundTime));
   document.getElementById('enemyVal').textContent=
     enemies.filter(e=>!e.dead).length;
+  document.getElementById('allyVal').textContent=
+    allies.filter(a=>!a.dead).length;
+  document.getElementById('sideVal').textContent=
+    player.team.toUpperCase();
   document.getElementById('scoreVal').textContent=score;
   document.getElementById('ammoVal').textContent=
     player.reloadCd>0
@@ -2569,13 +2925,7 @@ function fireWeaponRay(origin,dir){
       if(closestIsHead){
         showMsg('HEADSHOT',700);
       }
-      const alive=
-        enemies.filter(
-          e=>!e.dead
-        ).length;
-      if(alive===0){
-        victory();
-      }
+      checkEliminationWin();
     }
   }
   else if(
@@ -2810,40 +3160,58 @@ function lineOfSightBlocked(
   );
 }
 /* =========================================================
-   ENEMY SHOOTING
+   BOT COMBAT
+   Shared by both teams — a bot resolves a shot against
+   either the player or an opposing bot using its own
+   operator's weapon damage, with a small headshot
+   chance for instant kills, mirroring the player's own
+   weapon rules.
 ========================================================= */
-function enemyShoot(en){
+function botFireAt(shooter,target){
+  const isPlayer=target===player;
   const blocked=
     lineOfSightBlocked(
-      en.x,
-      en.z,
-      player.x,
-      player.z
+      shooter.x,
+      shooter.z,
+      target.x,
+      target.z
     );
   if(blocked)
     return;
   const origin=
     new THREE.Vector3(
-      en.x,
+      shooter.x,
       1.6,
-      en.z
+      shooter.z
     );
-  const target=
+  const targetPos=
     new THREE.Vector3(
-      player.x,
-      player.height,
-      player.z
+      target.x,
+      isPlayer?player.height:1.6,
+      target.z
     );
   addTracer(
     origin,
-    target,
+    targetPos,
     true
   );
-  const spreadHit=
+  const baseChance=
+    isPlayer
+    ?(.62*player.noise+.14)
+    :.42;
+  const hit=
     Math.random()<
-    (.68*player.noise+.15);
-  if(spreadHit){
-    player.hp-=7;
+    baseChance*shooter.accuracyMul;
+  if(!hit)
+    return;
+  const isHeadshot=
+    Math.random()<.12;
+  const dmg=
+    isHeadshot
+    ?9999
+    :shooter.weaponDmg;
+  if(isPlayer){
+    player.hp-=dmg;
     document
       .getElementById('damageOverlay')
       .style.opacity=.7;
@@ -2856,10 +3224,156 @@ function enemyShoot(en){
       120
     );
   }
+  else{
+    target.hp-=dmg;
+    if(
+      target.hp<=0 &&
+      !target.dead
+    ){
+      target.dead=true;
+      scene.remove(target.group);
+      if(target.team!==player.team){
+        score+=100;
+        checkEliminationWin();
+      }
+    }
+  }
+}
+function findNearestVisibleTarget(
+  bot,candidates
+){
+  let best=null;
+  let bestDist=Infinity;
+  candidates.forEach(c=>{
+    if(c.dead||c.hp<=0)
+      return;
+    const d=
+      Math.hypot(
+        c.x-bot.x,
+        c.z-bot.z
+      );
+    if(
+      d<bestDist &&
+      !lineOfSightBlocked(
+        bot.x,bot.z,c.x,c.z
+      )
+    ){
+      bestDist=d;
+      best=c;
+    }
+  });
+  return {
+    target:best,
+    dist:bestDist
+  };
+}
+function runBotAI(bot,opponents,dt){
+  if(bot.dead||bot.hp<=0)
+    return;
+  const found=
+    findNearestVisibleTarget(
+      bot,opponents
+    );
+  const target=found.target;
+  const isAttacker=
+    bot.team==='attack';
+  if(target||isAttacker)
+    bot.alert=true;
+  if(bot.alert){
+    let aimX,aimZ,d;
+    if(target){
+      aimX=target.x;
+      aimZ=target.z;
+      d=found.dist;
+    }
+    else{
+      aimX=site.x;
+      aimZ=site.z;
+      d=Math.hypot(
+        bot.x-site.x,
+        bot.z-site.z
+      );
+    }
+    const angTo=
+      Math.atan2(
+        aimX-bot.x,
+        aimZ-bot.z
+      );
+    const npos={
+      x:bot.x,
+      z:bot.z
+    };
+    if(target){
+      if(d>9){
+        npos.x+=
+          Math.sin(angTo)*bot.speed*dt;
+        npos.z+=
+          Math.cos(angTo)*bot.speed*dt;
+      }
+      else if(d<5){
+        npos.x-=
+          Math.sin(angTo)*bot.speed*dt*.7;
+        npos.z-=
+          Math.cos(angTo)*bot.speed*dt*.7;
+      }
+    }
+    else if(
+      isAttacker &&
+      d>site.r*.6
+    ){
+      npos.x+=
+        Math.sin(angTo)*bot.speed*dt;
+      npos.z+=
+        Math.cos(angTo)*bot.speed*dt;
+    }
+    resolveWallCollisionXZ(
+      npos,bot.r
+    );
+    resolveDecorationCollision(
+      npos,bot.r
+    );
+    bot.x=npos.x;
+    bot.z=npos.z;
+    bot.group.position.set(
+      bot.x,0,bot.z
+    );
+    bot.group.rotation.y=angTo;
+    bot.fireCd-=dt;
+    if(
+      target &&
+      bot.fireCd<=0 &&
+      !lineOfSightBlocked(
+        bot.x,bot.z,target.x,target.z
+      )
+    ){
+      bot.fireCd=
+        1.0+Math.random()*.7;
+      botFireAt(bot,target);
+    }
+  }
+  bot.walkT+=dt;
+  const bob=
+    Math.sin(bot.walkT*6)*.15;
+  bot.group.userData.legL.rotation.x=
+    bot.alert?bob:0;
+  bot.group.userData.legR.rotation.x=
+    bot.alert?-bob:0;
 }
 /* =========================================================
-   VICTORY
+   ROUND OUTCOMES
 ========================================================= */
+function checkEliminationWin(){
+  if(
+    player.team==='defense' &&
+    gameState!=='planted' &&
+    enemies.length>0 &&
+    enemies.every(e=>e.dead)
+  ){
+    defenseWinsRound(
+      'ALL ATTACKERS ELIMINATED — DEFENSE WINS'
+    );
+  }
+}
 function victory(){
   if(gameState==='victory')
     return;
@@ -2867,8 +3381,37 @@ function victory(){
   score+=500;
   mouseDown=false;
   showMsg(
-    'VICTORY — ALL DEFENDERS ELIMINATED — PRESS R FOR OPERATOR SELECT',
+    'VICTORY — PRESS R FOR OPERATOR SELECT',
     999999
+  );
+}
+function defenseWinsRound(
+  text='DEFENSE HOLDS — ROUND WON'
+){
+  if(
+    gameState==='gameover' ||
+    gameState==='victory' ||
+    gameState==='roundover'
+  )
+    return;
+  gameState='roundover';
+  score+=500;
+  hideBomb();
+  viewingCamIndex=-1;
+  document
+    .getElementById('detonate')
+    .style.display='none';
+  document
+    .getElementById('cameraHud')
+    .style.display='none';
+  showMsg(text,2400);
+  setTimeout(
+    ()=>{
+      round++;
+      currentLevel++;
+      resetRound();
+    },
+    2400
   );
 }
 /* =========================================================
@@ -2881,6 +3424,11 @@ function loseRound(text){
   )
     return;
   gameState='gameover';
+  hideBomb();
+  viewingCamIndex=-1;
+  document
+    .getElementById('cameraHud')
+    .style.display='none';
   showMsg(
     text+
     ' — PRESS R FOR OPERATOR SELECT',
@@ -3096,13 +3644,7 @@ function explodeGrenade(pos){
         en.dead=true;
         scene.remove(en.group);
         score+=100;
-        if(
-          enemies.filter(
-            e=>!e.dead
-          ).length===0
-        ){
-          victory();
-        }
+        checkEliminationWin();
       }
     }
   });
@@ -3240,8 +3782,18 @@ function intelScan(){
    RESET ROUND
 ========================================================= */
 function resetRound(){
-  player.x=-30;
-  player.z=0;
+  const spawnTheme=getLevel();
+  if(player.team==='defense'){
+    player.x=spawnTheme.spots[0].x;
+    player.z=spawnTheme.spots[0].z;
+  }
+  else{
+    player.x=-30;
+    player.z=0;
+  }
+  viewingCamIndex=-1;
+  defuseProgress=0;
+  hideBomb();
   player.hp=player.maxHp;
   player.ammo=player.maxAmmo;
   player.reloadCd=0;
@@ -3308,6 +3860,11 @@ function update(){
   skyDome.position.copy(
     camera.position
   );
+  updateDust(dt);
+  const activeCam=
+    viewingCamIndex>=0
+    ?mapCameras[viewingCamIndex]
+    :camera;
   if(
     !locked ||
     gameState==='gameover' ||
@@ -3316,7 +3873,7 @@ function update(){
   ){
     renderer.render(
       scene,
-      camera
+      activeCam
     );
     requestAnimationFrame(update);
     return;
@@ -3327,23 +3884,16 @@ function update(){
   ){
     roundTime-=dt;
     if(roundTime<=0){
-      loseRound(
-        'TIME EXPIRED — DEFENDERS WIN'
-      );
-    }
-  }
-  if(
-    gameState==='planted'
-  ){
-    plantTimer-=dt;
-    document
-      .getElementById('detVal')
-      .textContent=
-      Math.ceil(
-        Math.max(0,plantTimer)
-      );
-    if(plantTimer<=0){
-      winRound();
+      if(player.team==='attack'){
+        loseRound(
+          'TIME EXPIRED — DEFENSE WINS'
+        );
+      }
+      else{
+        defenseWinsRound(
+          'TIME EXPIRED — DEFENSE HOLDS'
+        );
+      }
     }
   }
   updateStance();
@@ -3442,12 +3992,28 @@ function update(){
       .getElementById('intelHud')
       .style.display='none';
   }
+  const inputActive=
+    viewingCamIndex<0;
+  const camHudEl=
+    document.getElementById('cameraHud');
+  if(viewingCamIndex>=0){
+    camHudEl.textContent=
+      'VIEWING CAM '+
+      (viewingCamIndex+1)+
+      ' — PRESS '+
+      (viewingCamIndex+1)+
+      ' AGAIN TO RETURN';
+    camHudEl.style.display='block';
+  }
+  else{
+    camHudEl.style.display='none';
+  }
   let mx=0;
   let mz=0;
-  if(keys['w']) mz-=1;
-  if(keys['s']) mz+=1;
-  if(keys['a']) mx-=1;
-  if(keys['d']) mx+=1;
+  if(keys['w']&&inputActive) mz-=1;
+  if(keys['s']&&inputActive) mz+=1;
+  if(keys['a']&&inputActive) mx-=1;
+  if(keys['d']&&inputActive) mx+=1;
   const mag=
     Math.hypot(mx,mz)||1;
   mx/=mag;
@@ -3587,20 +4153,21 @@ function update(){
     player.abilityCd=
       Math.max(0,player.abilityCd-dt);
   }
-  if(mouseDown)
+  if(mouseDown&&inputActive)
     playerShoot();
   if(
     keys['r'] &&
+    inputActive &&
     player.ammo<player.maxAmmo &&
     player.reloadCd<=0
   ){
     player.reloadCd=player.reloadTime;
   }
   /* =====================================================
-     BREACH / PLANT
+     BREACH — a tactical tool available to either side
   ===================================================== */
-  if(keys['e']){
-    let breached=false;
+  let breached=false;
+  if(keys['e']&&inputActive){
     for(
       const w of walls
     ){
@@ -3641,173 +4208,180 @@ function update(){
         break;
       }
     }
-    const distToSite=
-      Math.hypot(
-        player.x-site.x,
-        player.z-site.z
+  }
+  const distToSite=
+    Math.hypot(
+      player.x-site.x,
+      player.z-site.z
+    );
+  const playerInZone=
+    distToSite<site.r+1.5;
+  /* =====================================================
+     PLANT — the attacking side (player+allies, or the
+     enemy team if the player is defending) must hold
+     the bomb site to arm the bomb.
+  ===================================================== */
+  if(
+    gameState==='playing' ||
+    gameState==='planting'
+  ){
+    const attackBots=
+      player.team==='attack'
+      ?allies:enemies;
+    const botAttackerInZone=
+      attackBots.some(b=>
+        !b.dead &&
+        Math.hypot(
+          b.x-site.x,
+          b.z-site.z
+        )<site.r+1.5
       );
+    const playerContrib=
+      player.team==='attack' &&
+      inputActive &&
+      playerInZone &&
+      keys['e'] &&
+      !breached;
+    const anyAttackerInZone=
+      playerContrib ||
+      botAttackerInZone;
     if(
-      !breached &&
       gameState==='playing' &&
-      distToSite<site.r+1.5
+      anyAttackerInZone
     ){
       gameState='planting';
     }
-    if(
-      gameState==='planting' &&
-      distToSite<site.r+1.5
-    ){
-      plantProgress+=dt;
-      if(plantProgress>=2.5){
-        gameState='planted';
-        plantTimer=12;
-        document
-          .getElementById('detonate')
-          .style.display='block';
-        showMsg(
-          'CHARGE ARMED — HOLD THE SITE',
-          2200
-        );
+    if(gameState==='planting'){
+      if(anyAttackerInZone){
+        plantProgress+=dt;
+        if(plantProgress>=2.5){
+          gameState='planted';
+          plantTimer=30;
+          defuseProgress=0;
+          showBomb();
+          document
+            .getElementById('detonate')
+            .style.display='block';
+          showMsg(
+            'BOMB ARMED — DEFEND OR DEFUSE',
+            2200
+          );
+        }
       }
-    }
-  }
-  else if(
-    gameState==='planting'
-  ){
-    const distToSite=
-      Math.hypot(
-        player.x-site.x,
-        player.z-site.z
-      );
-    if(
-      distToSite>site.r+1.5
-    ){
-      plantProgress=
-        Math.max(
-          0,
-          plantProgress-dt
-        );
+      else{
+        plantProgress=
+          Math.max(
+            0,
+            plantProgress-dt
+          );
+      }
     }
   }
   /* =====================================================
-     ENEMY AI
+     DEFUSE + DETONATION — the defending side must hold
+     the planted bomb to disarm it before it goes off.
   ===================================================== */
-  for(
-    const en of enemies
-  ){
-    if(en.dead)
-      continue;
-    const distance=
-      Math.hypot(
-        en.x-player.x,
-        en.z-player.z
+  if(gameState==='planted'){
+    plantTimer-=dt;
+    document
+      .getElementById('detVal')
+      .textContent=
+      Math.ceil(
+        Math.max(0,plantTimer)
       );
-    const lineClear=
-      !lineOfSightBlocked(
-        en.x,
-        en.z,
-        player.x,
-        player.z
+    const defendBots=
+      player.team==='defense'
+      ?allies:enemies;
+    const botDefenderInZone=
+      defendBots.some(b=>
+        !b.dead &&
+        Math.hypot(
+          b.x-site.x,
+          b.z-site.z
+        )<site.r+1.5
       );
-    const detectionRange=
-      32*
-      (
-        .55+
-        player.noise*.45
-      );
-    const canSee=
-      lineClear &&
-      distance<detectionRange;
-    if(canSee)
-      en.alert=true;
-    if(en.alert){
-      const angToPlayer=
-        Math.atan2(
-          player.x-en.x,
-          player.z-en.z
+    const playerDefusing=
+      player.team==='defense' &&
+      inputActive &&
+      playerInZone &&
+      keys['e'];
+    const anyDefenderDefusing=
+      playerDefusing ||
+      botDefenderInZone;
+    if(anyDefenderDefusing){
+      defuseProgress+=dt;
+    }
+    else{
+      defuseProgress=
+        Math.max(
+          0,
+          defuseProgress-dt*.5
         );
-      const d=distance;
-      const npos={
-        x:en.x,
-        z:en.z
-      };
-      if(d>9){
-        npos.x+=
-          Math.sin(
-            angToPlayer
-          )*
-          en.speed*
-          dt*
-          60;
-        npos.z+=
-          Math.cos(
-            angToPlayer
-          )*
-          en.speed*
-          dt*
-          60;
-      }
-      else if(d<5){
-        npos.x-=
-          Math.sin(
-            angToPlayer
-          )*
-          en.speed*
-          dt*
-          40;
-        npos.z-=
-          Math.cos(
-            angToPlayer
-          )*
-          en.speed*
-          dt*
-          40;
-      }
-      resolveWallCollisionXZ(
-        npos,
-        en.r
-      );
-      en.x=npos.x;
-      en.z=npos.z;
-      en.group.position.set(
-        en.x,
-        0,
-        en.z
-      );
-      en.group.rotation.y=
-        angToPlayer;
-      en.fireCd-=dt;
-      if(
-        en.fireCd<=0 &&
-        !lineOfSightBlocked(
-          en.x,
-          en.z,
-          player.x,
-          player.z
+    }
+    document
+      .getElementById('defuseVal')
+      .textContent=
+      Math.min(
+        100,
+        Math.round(
+          defuseProgress/5*100
         )
-      ){
-        en.fireCd=
-          1.1+
-          Math.random()*.7;
-        enemyShoot(en);
+      )+'%';
+    if(
+      gameState==='planted' &&
+      defuseProgress>=5
+    ){
+      hideBomb();
+      if(player.team==='defense'){
+        defenseWinsRound(
+          'BOMB DEFUSED — DEFENSE WINS'
+        );
+      }
+      else{
+        loseRound(
+          'BOMB DEFUSED — DEFENSE WINS'
+        );
       }
     }
-    en.walkT+=dt;
-    const bob=
-      Math.sin(
-        en.walkT*6
-      )*.15;
-    en.group.userData
-      .legL.rotation.x=
-      en.alert
-      ?bob
-      :0;
-    en.group.userData
-      .legR.rotation.x=
-      en.alert
-      ?-bob
-      :0;
+    else if(
+      gameState==='planted' &&
+      plantTimer<=0
+    ){
+      hideBomb();
+      if(player.team==='attack'){
+        winRound();
+      }
+      else{
+        loseRound(
+          'BOMB DETONATED — ATTACK WINS'
+        );
+      }
+    }
   }
+  /* =====================================================
+     BOT AI — enemies fight the player + allies; allies
+     fight the enemies. Whichever side is attacking this
+     round pushes for the site automatically (see
+     runBotAI); the defending side holds until it spots
+     someone.
+  ===================================================== */
+  const enemyOpponents=
+    [player,...allies];
+  enemies.forEach(en=>
+    runBotAI(en,enemyOpponents,dt)
+  );
+  const allyOpponents=enemies;
+  allies.forEach(a=>
+    runBotAI(a,allyOpponents,dt)
+  );
+  bombGlowSprite.material.opacity=
+    .5+
+    Math.sin(performance.now()*.01)*.3;
+  bombLightMat.color.setHex(
+    Math.sin(performance.now()*.012)>0
+    ?0xff2020
+    :0x400000
+  );
   /* =====================================================
      GRENADES
   ===================================================== */
@@ -3923,7 +4497,7 @@ function update(){
   updateHud();
   renderer.render(
     scene,
-    camera
+    activeCam
   );
   requestAnimationFrame(update);
 }
@@ -3933,8 +4507,12 @@ function update(){
 function winRound(){
   gameState='roundover';
   score+=500;
+  viewingCamIndex=-1;
   document
     .getElementById('detonate')
+    .style.display='none';
+  document
+    .getElementById('cameraHud')
     .style.display='none';
   showMsg(
     'CHARGE DETONATED — ROUND WON',
@@ -4210,12 +4788,44 @@ function buildMapMenu(){
     grid.appendChild(chip);
   });
 }
+let selectedSide='attack';
+function buildSideMenu(){
+  const grid=
+    document.getElementById('sideGrid');
+  grid.innerHTML='';
+  [
+    {id:'attack',label:'ATTACK'},
+    {id:'defense',label:'DEFENSE'}
+  ].forEach(side=>{
+    const chip=
+      document.createElement('div');
+    chip.className=
+      'sideChip'+
+      (side.id===selectedSide?' selected':'')+
+      (side.id==='defense'?' defenseSelected':'');
+    chip.textContent=side.label;
+    chip.addEventListener('click',()=>{
+      selectedSide=side.id;
+      document
+        .querySelectorAll('.sideChip')
+        .forEach(c=>{
+          c.classList.remove('selected');
+          c.classList.remove('defenseSelected');
+        });
+      chip.classList.add('selected');
+      if(side.id==='defense')
+        chip.classList.add('defenseSelected');
+    });
+    grid.appendChild(chip);
+  });
+}
 document
   .getElementById('deployBtn')
   .addEventListener('click',()=>{
     const op=
       PLAYER_OPS[selectedOperatorIndex];
     applyOperatorLoadout(op);
+    player.team=selectedSide;
     round=1;
     currentLevel=selectedMapIndex;
     score=0;
@@ -4230,6 +4840,7 @@ document
 ========================================================= */
 buildMenu();
 buildMapMenu();
+buildSideMenu();
 loadLevel(0);
 updateHud();
 requestAnimationFrame(update);
