@@ -227,24 +227,7 @@ canvas{
 }
 
 #muzzleFlash{
-  position:fixed;
-  left:50%;
-  top:50%;
-  transform:translate(-50%,-50%);
-  width:100px;
-  height:100px;
-  pointer-events:none;
-  z-index:4;
-  opacity:0;
-  background:
-    radial-gradient(
-      circle,
-      rgba(255,255,210,1) 0%,
-      rgba(255,180,40,.9) 10%,
-      rgba(255,80,10,.5) 28%,
-      transparent 65%
-    );
-  filter:blur(2px);
+  display:none;
 }
 
 #controls{
@@ -556,14 +539,6 @@ const wallMat=
     metalness:.03
   });
 
-const brokenMat=
-  new THREE.MeshStandardMaterial({
-    color:0x29261e,
-    roughness:1,
-    transparent:true,
-    opacity:.35
-  });
-
 let walls=[];
 
 function makeWall(
@@ -604,6 +579,62 @@ function makeWall(
   };
 
 }
+
+
+/* =========================================================
+   WALL DESTROY FUNCTION
+========================================================= */
+
+let bulletHoles=[];
+
+function destroyWall(wall){
+
+  if(
+    !wall ||
+    wall.broken
+  ){
+    return;
+  }
+
+  wall.broken=true;
+
+  /*
+    Completely remove the wall.
+    It is no longer visible and no longer
+    participates in collision or line-of-sight.
+  */
+
+  scene.remove(wall.mesh);
+
+  wall.mesh.visible=false;
+
+
+  /*
+    Remove all bullet holes that belong
+    to this wall.
+  */
+
+  bulletHoles=
+    bulletHoles.filter(
+      hole=>{
+
+        if(hole.wall===wall){
+
+          scene.remove(
+            hole.mesh
+          );
+
+          return false;
+
+        }
+
+        return true;
+
+      }
+    );
+
+}
+
 
 function buildLevel(){
 
@@ -843,34 +874,40 @@ function addStreetLampPole(
    DECORATION
 ========================================================= */
 
-addCrate(-14,-6,1.2,.3);
-addCrate(-13,-5,.9,1.1);
-addCrate(10,10,1.1,.6);
-addCrate(28,-14,1,.2);
-addCrate(-24,16,1.3,.8);
+function addDecorations(){
 
-addCrate(31,25,.8,.3);
-addCrate(-30,10,1,.6);
-addCrate(22,-25,1.2,.1);
+  addCrate(-14,-6,1.2,.3);
+  addCrate(-13,-5,.9,1.1);
+  addCrate(10,10,1.1,.6);
+  addCrate(28,-14,1,.2);
+  addCrate(-24,16,1.3,.8);
 
-addBarrel(-8,3,0x4a5a3a);
-addBarrel(-7.4,3.6,0x5a3a3a);
-addBarrel(18,-2,0x3a4a5a);
-addBarrel(30,10,0x4a4a3a);
-addBarrel(-26,-18,0x5a4a2a);
+  addCrate(31,25,.8,.3);
+  addCrate(-30,10,1,.6);
+  addCrate(22,-25,1.2,.1);
 
-addBarrel(34,-25,0x394a3b);
-addBarrel(-32,-5,0x4b3940);
+  addBarrel(-8,3,0x4a5a3a);
+  addBarrel(-7.4,3.6,0x5a3a3a);
+  addBarrel(18,-2,0x3a4a5a);
+  addBarrel(30,10,0x4a4a3a);
+  addBarrel(-26,-18,0x5a4a2a);
 
-addSandbagRow(20,20,0,5);
-addSandbagRow(-2,-14,Math.PI/2,4);
-addSandbagRow(32,4,Math.PI/2,4);
+  addBarrel(34,-25,0x394a3b);
+  addBarrel(-32,-5,0x4b3940);
 
-addStreetLampPole(-6,8);
-addStreetLampPole(14,-10);
-addStreetLampPole(24,4);
-addStreetLampPole(-20,-16);
-addStreetLampPole(2,-20);
+  addSandbagRow(20,20,0,5);
+  addSandbagRow(-2,-14,Math.PI/2,4);
+  addSandbagRow(32,4,Math.PI/2,4);
+
+  addStreetLampPole(-6,8);
+  addStreetLampPole(14,-10);
+  addStreetLampPole(24,4);
+  addStreetLampPole(-20,-16);
+  addStreetLampPole(2,-20);
+
+}
+
+addDecorations();
 
 
 /* =========================================================
@@ -1464,17 +1501,11 @@ function addTracer(
    BULLET HOLES
 ========================================================= */
 
-let bulletHoles=[];
-
 function createBulletHole(
   point,
-  normal
+  normal,
+  wall=null
 ){
-
-  /*
-    Small dark circular decal.
-    No explosion or particle effect.
-  */
 
   const holeMat=
     new THREE.MeshBasicMaterial({
@@ -1496,21 +1527,10 @@ function createBulletHole(
 
   hole.position.copy(point);
 
-  /*
-    CircleGeometry faces +Z by default.
-    Rotate it so its +Z direction follows
-    the wall surface normal.
-  */
-
   hole.quaternion.setFromUnitVectors(
     new THREE.Vector3(0,0,1),
     normal.clone().normalize()
   );
-
-  /*
-    Move it a tiny amount away from the
-    surface to prevent z-fighting.
-  */
 
   hole.position.add(
     normal.clone().multiplyScalar(.006)
@@ -1518,7 +1538,10 @@ function createBulletHole(
 
   scene.add(hole);
 
-  bulletHoles.push(hole);
+  bulletHoles.push({
+    mesh:hole,
+    wall:wall
+  });
 
 }
 
@@ -1537,11 +1560,6 @@ function addWallBulletHole(
   const hd=wall.d/2;
 
   let normal;
-
-  /*
-    Determine which face of the wall
-    was hit.
-  */
 
   const localX=
     point.x-wall.x;
@@ -1587,10 +1605,6 @@ function addWallBulletHole(
 
   else{
 
-    /*
-      Fallback based on bullet direction.
-    */
-
     normal=
       direction.clone().negate();
 
@@ -1602,30 +1616,8 @@ function addWallBulletHole(
 
   createBulletHole(
     point,
-    normal
-  );
-
-}
-
-
-/* =========================================================
-   MUZZLE FLASH
-========================================================= */
-
-function muzzleFlash(){
-
-  const el=
-    document.getElementById(
-      'muzzleFlash'
-    );
-
-  el.style.opacity='1';
-
-  setTimeout(
-    ()=>{
-      el.style.opacity='0';
-    },
-    45
+    normal,
+    wall
   );
 
 }
@@ -1633,6 +1625,7 @@ function muzzleFlash(){
 
 /* =========================================================
    AR-STYLE PLAYER RIFLE
+   NO MUZZLE FLASH
 ========================================================= */
 
 const gunGroup=
@@ -1968,29 +1961,6 @@ chargingHandle.position.set(
 gunGroup.add(chargingHandle);
 
 
-/* Muzzle */
-
-const muzzle=
-  new THREE.Mesh(
-    new THREE.SphereGeometry(
-      .065,8,8
-    ),
-    new THREE.MeshBasicMaterial({
-      color:0xffaa33
-    })
-  );
-
-muzzle.position.set(
-  .34,
-  -.22,
-  -1.88
-);
-
-muzzle.visible=false;
-
-gunGroup.add(muzzle);
-
-
 /* =========================================================
    RAYCASTER
 ========================================================= */
@@ -2001,6 +1971,7 @@ const raycaster=
 
 /* =========================================================
    PLAYER SHOOTING
+   NO MUZZLE FLASH
 ========================================================= */
 
 function playerShoot(){
@@ -2016,17 +1987,6 @@ function playerShoot(){
   player.fireCd=.12;
 
   player.ammo--;
-
-  muzzleFlash();
-
-  muzzle.visible=true;
-
-  setTimeout(
-    ()=>{
-      muzzle.visible=false;
-    },
-    35
-  );
 
 
   const origin=
@@ -2164,9 +2124,7 @@ function playerShoot(){
       );
 
 
-  /*
-    VISIBLE BULLET TRACE
-  */
+  /* Visible bullet trace */
 
   addTracer(
     origin,
@@ -2227,8 +2185,9 @@ function playerShoot(){
   ){
 
     /*
-      Small bullet hole only.
-      NO EXPLOSION.
+      Bullet hole only.
+      No muzzle flash.
+      No explosion.
     */
 
     addWallBulletHole(
@@ -2244,10 +2203,7 @@ function playerShoot(){
       !hitWall.broken
     ){
 
-      hitWall.broken=true;
-
-      hitWall.mesh.material=
-        brokenMat;
+      destroyWall(hitWall);
 
     }
 
@@ -2266,21 +2222,184 @@ function playerShoot(){
 
 
 /* =========================================================
+   EXACT WALL LINE OF SIGHT
+========================================================= */
+
+function segmentBlockedByWall(
+  x0,z0,x1,z1
+){
+
+  for(const w of walls){
+
+    if(w.broken)
+      continue;
+
+    const minX=
+      w.x-w.w/2;
+
+    const maxX=
+      w.x+w.w/2;
+
+    const minZ=
+      w.z-w.d/2;
+
+    const maxZ=
+      w.z+w.d/2;
+
+    const dx=x1-x0;
+    const dz=z1-z0;
+
+    let tMin=0;
+    let tMax=1;
+
+
+    /* X slab */
+
+    if(
+      Math.abs(dx)<0.000001
+    ){
+
+      if(
+        x0<minX ||
+        x0>maxX
+      ){
+
+        continue;
+
+      }
+
+    }
+
+    else{
+
+      let tx1=
+        (minX-x0)/dx;
+
+      let tx2=
+        (maxX-x0)/dx;
+
+      if(tx1>tx2){
+
+        const temp=tx1;
+
+        tx1=tx2;
+        tx2=temp;
+
+      }
+
+      tMin=
+        Math.max(
+          tMin,
+          tx1
+        );
+
+      tMax=
+        Math.min(
+          tMax,
+          tx2
+        );
+
+      if(tMin>tMax)
+        continue;
+
+    }
+
+
+    /* Z slab */
+
+    if(
+      Math.abs(dz)<0.000001
+    ){
+
+      if(
+        z0<minZ ||
+        z0>maxZ
+      ){
+
+        continue;
+
+      }
+
+    }
+
+    else{
+
+      let tz1=
+        (minZ-z0)/dz;
+
+      let tz2=
+        (maxZ-z0)/dz;
+
+      if(tz1>tz2){
+
+        const temp=tz1;
+
+        tz1=tz2;
+        tz2=temp;
+
+      }
+
+      tMin=
+        Math.max(
+          tMin,
+          tz1
+        );
+
+      tMax=
+        Math.min(
+          tMax,
+          tz2
+        );
+
+      if(tMin>tMax)
+        continue;
+
+    }
+
+
+    /* The line passes through this wall */
+
+    if(
+      tMax>=0 &&
+      tMin<=1
+    ){
+
+      return true;
+
+    }
+
+  }
+
+  return false;
+
+}
+
+
+/* =========================================================
    ENEMY SHOOTING
 ========================================================= */
 
 function enemyShoot(en){
 
-  const canSee=
-    !segmentBlockedByWall(
+  /*
+    Do one final wall check immediately before
+    the enemy fires.
+
+    This prevents bullets from passing through
+    intact walls.
+  */
+
+  const blocked=
+    segmentBlockedByWall(
       en.x,
       en.z,
       player.x,
       player.z
     );
 
-  if(!canSee)
+  if(blocked)
     return;
+
 
   const origin=
     new THREE.Vector3(
@@ -2296,15 +2415,15 @@ function enemyShoot(en){
       player.z
     );
 
-  /*
-    Enemy bullet trace.
-  */
+
+  /* Enemy bullet trace */
 
   addTracer(
     origin,
     target,
     true
   );
+
 
   const spreadHit=
     Math.random()<
@@ -2534,56 +2653,6 @@ function resolveDecorationCollision(
 
 
 /* =========================================================
-   WALL LINE OF SIGHT
-========================================================= */
-
-function segmentBlockedByWall(
-  x0,z0,x1,z1
-){
-
-  const steps=40;
-
-  for(let i=0;i<=steps;i++){
-
-    const t=i/steps;
-
-    const x=
-      x0+(x1-x0)*t;
-
-    const z=
-      z0+(z1-z0)*t;
-
-    for(
-      const w of walls
-    ){
-
-      if(w.broken)
-        continue;
-
-      const hw=w.w/2;
-      const hd=w.d/2;
-
-      if(
-        x>w.x-hw &&
-        x<w.x+hw &&
-        z>w.z-hd &&
-        z<w.z+hd
-      ){
-
-        return true;
-
-      }
-
-    }
-
-  }
-
-  return false;
-
-}
-
-
-/* =========================================================
    RESET ROUND
 ========================================================= */
 
@@ -2600,6 +2669,7 @@ function resetRound(){
 
   player.stance='standing';
 
+
   bulletTracers.forEach(
     b=>scene.remove(b.mesh)
   );
@@ -2607,12 +2677,8 @@ function resetRound(){
   bulletTracers=[];
 
 
-  /*
-    Remove old bullet holes.
-  */
-
   bulletHoles.forEach(
-    hole=>scene.remove(hole)
+    hole=>scene.remove(hole.mesh)
   );
 
   bulletHoles=[];
@@ -2622,46 +2688,7 @@ function resetRound(){
 
   decorationColliders=[];
 
-  addCrate(-14,-6,1.2,.3);
-  addCrate(-13,-5,.9,1.1);
-  addCrate(10,10,1.1,.6);
-  addCrate(28,-14,1,.2);
-  addCrate(-24,16,1.3,.8);
-
-  addCrate(31,25,.8,.3);
-  addCrate(-30,10,1,.6);
-  addCrate(22,-25,1.2,.1);
-
-  addBarrel(-8,3,0x4a5a3a);
-  addBarrel(-7.4,3.6,0x5a3a3a);
-  addBarrel(18,-2,0x3a4a5a);
-  addBarrel(30,10,0x4a4a3a);
-  addBarrel(-26,-18,0x5a4a2a);
-
-  addBarrel(34,-25,0x394a3b);
-  addBarrel(-32,-5,0x4b3940);
-
-  addSandbagRow(
-    20,20,0,5
-  );
-
-  addSandbagRow(
-    -2,-14,
-    Math.PI/2,
-    4
-  );
-
-  addSandbagRow(
-    32,4,
-    Math.PI/2,
-    4
-  );
-
-  addStreetLampPole(-6,8);
-  addStreetLampPole(14,-10);
-  addStreetLampPole(24,4);
-  addStreetLampPole(-20,-16);
-  addStreetLampPole(2,-20);
+  addDecorations();
 
   spawnEnemies();
 
@@ -3012,8 +3039,7 @@ function update(){
 
         if(w.hp<=0){
 
-          w.broken=true;
-          w.mesh.material=brokenMat;
+          destroyWall(w);
 
         }
 
@@ -3212,9 +3238,19 @@ function update(){
       en.fireCd-=dt;
 
 
+      /*
+        Final line-of-sight check before
+        firing.
+      */
+
       if(
         en.fireCd<=0 &&
-        canSee
+        !segmentBlockedByWall(
+          en.x,
+          en.z,
+          player.x,
+          player.z
+        )
       ){
 
         en.fireCd=
