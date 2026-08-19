@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Tom Clancy's Rainbow 6 Siege</title>
+<title>Breach Protocol 3D</title>
 
 <style>
 html,body{
@@ -596,6 +596,41 @@ const levelLayouts={
     [18,-18,1,16],
     [0,-4,10,1],
     [-14,4,10,1]
+  ],
+
+  arctic:[
+    [-4,-6,1,24],
+    [4,10,1,20],
+    [-18,20,20,1],
+    [14,-20,1,18],
+    [0,30,24,1],
+    [-24,-24,1,16]
+  ],
+
+  toxic:[
+    [-10,-16,1,14],
+    [10,16,1,14],
+    [-20,4,14,1],
+    [20,-4,14,1],
+    [0,-30,1,20],
+    [-30,20,1,16]
+  ],
+
+  desert:[
+    [-16,-16,1,14],
+    [16,16,1,14],
+    [0,0,1,10],
+    [-28,10,10,1],
+    [28,-10,10,1]
+  ],
+
+  volcanic:[
+    [-6,-30,1,20],
+    [6,-10,1,20],
+    [-6,10,1,20],
+    [6,30,1,10],
+    [-20,0,1,30],
+    [20,0,1,30]
   ]
 
 };
@@ -711,6 +746,118 @@ const levelThemes=[
       [0x1a1530,0x8a5aff],
       [0x10101f,0x6a3aff],
       [0x1a1a25,0x9a6aff]
+    ]
+  },
+
+  {
+    name:'ARCTIC OUTPOST',
+    sky:0x0a1218,
+    fog:0x1a2830,
+    fogNear:22,
+    fogFar:110,
+    floor:0xb8c8d0,
+    wall:0x8aa0ac,
+    lamps:[0x80e0ff,0xa0f0ff,0x60c0ff,0xc0f0ff,0x80d0ff],
+    layout:'arctic',
+    site:{x:22,z:-24,r:3},
+    spots:[
+      {x:24,z:-30},
+      {x:18,z:-18},
+      {x:28,z:-20},
+      {x:16,z:-28},
+      {x:24,z:-16}
+    ],
+    enemyType:'arctic',
+    palettes:[
+      [0xd8e8ec,0x2060a0],
+      [0xc8dce4,0x1050a0],
+      [0xe0eef2,0x3070b0],
+      [0xd0e4ea,0x2868a8],
+      [0xc8dae2,0x1858a0]
+    ]
+  },
+
+  {
+    name:'TOXIC SWAMP',
+    sky:0x0a140a,
+    fog:0x14200f,
+    fogNear:20,
+    fogFar:100,
+    floor:0x2a3a1a,
+    wall:0x3a4a22,
+    lamps:[0x80ff40,0xa0ff60,0x60e020,0xc0ff80,0x90ff50],
+    layout:'toxic',
+    site:{x:-24,z:26,r:3},
+    spots:[
+      {x:-26,z:30},
+      {x:-20,z:22},
+      {x:-30,z:24},
+      {x:-18,z:30},
+      {x:-26,z:20}
+    ],
+    enemyType:'toxic',
+    palettes:[
+      [0x3a5a2a,0x80ff40],
+      [0x2a4a1a,0xa0ff60],
+      [0x445a2a,0x60e020],
+      [0x334a20,0x90ff70],
+      [0x2a4020,0x70e030]
+    ]
+  },
+
+  {
+    name:'DESERT SIEGE',
+    sky:0x1a1408,
+    fog:0x3a2c14,
+    fogNear:35,
+    fogFar:150,
+    floor:0xc8a868,
+    wall:0xb89858,
+    lamps:[0xffaa40,0xffcf80,0xff9030,0xffd090,0xffb050],
+    layout:'desert',
+    site:{x:30,z:28,r:3},
+    spots:[
+      {x:32,z:30},
+      {x:26,z:24},
+      {x:34,z:20},
+      {x:24,z:32},
+      {x:30,z:22}
+    ],
+    enemyType:'raider',
+    palettes:[
+      [0xb08850,0x6a4020],
+      [0xc09860,0x5a3818],
+      [0xa07840,0x4a3010],
+      [0xb89858,0x6a4820],
+      [0xc8a868,0x5a4018]
+    ]
+  },
+
+  {
+    name:'VOLCANIC FORGE',
+    sky:0x100604,
+    fog:0x2a0a06,
+    fogNear:15,
+    fogFar:90,
+    floor:0x2a1410,
+    wall:0x3a1c14,
+    lamps:[0xff4020,0xff6a30,0xff2010,0xffaa40,0xff5020],
+    layout:'volcanic',
+    site:{x:-30,z:-28,r:3},
+    spots:[
+      {x:-32,z:-30},
+      {x:-26,z:-22},
+      {x:-34,z:-18},
+      {x:-24,z:-32},
+      {x:-30,z:-20}
+    ],
+    enemyType:'inferno',
+    palettes:[
+      [0x3a1810,0xff4020],
+      [0x2a1008,0xff6a30],
+      [0x401a10,0xff2010],
+      [0x351510,0xffaa40],
+      [0x2a0c08,0xff5020]
     ]
   }
 
@@ -1203,13 +1350,17 @@ function buildOperator(
 
   const isRobotic=type==='robotic';
   const isGhost=type==='ghost';
-  const isHeavy=type==='heavy';
+  const isHeavy=type==='heavy'||type==='arctic';
+  const isEmissive=type==='toxic'||type==='inferno';
+  const isLean=type==='raider'||type==='inferno';
 
   const matBody=
     new THREE.MeshStandardMaterial({
       color:bodyColor,
-      roughness:isRobotic?.35:.7,
+      roughness:isRobotic?.35:(isEmissive?.4:.7),
       metalness:isRobotic?.75:0,
+      emissive:isEmissive?new THREE.Color(bodyColor):0x000000,
+      emissiveIntensity:isEmissive?.3:0,
       transparent:isGhost,
       opacity:isGhost?.72:1
     });
@@ -1217,10 +1368,10 @@ function buildOperator(
   const matAccent=
     new THREE.MeshStandardMaterial({
       color:accentColor,
-      roughness:isRobotic?.25:.5,
+      roughness:isRobotic?.25:(isEmissive?.3:.5),
       metalness:isRobotic?.8:0,
-      emissive:isRobotic?new THREE.Color(accentColor):0x000000,
-      emissiveIntensity:isRobotic?.5:0,
+      emissive:(isRobotic||isEmissive)?new THREE.Color(accentColor):0x000000,
+      emissiveIntensity:isRobotic?.5:(isEmissive?.7:0),
       transparent:isGhost,
       opacity:isGhost?.72:1
     });
@@ -1403,6 +1554,12 @@ function buildOperator(
 
   }
 
+  else if(isLean){
+
+    group.scale.set(.94,1.05,.9);
+
+  }
+
   return group;
 
 }
@@ -1419,7 +1576,11 @@ const enemyTypeStats={
   standard:{hp:60,speed:.045},
   heavy:{hp:90,speed:.036},
   robotic:{hp:55,speed:.05},
-  ghost:{hp:45,speed:.06}
+  ghost:{hp:45,speed:.06},
+  arctic:{hp:100,speed:.03},
+  toxic:{hp:50,speed:.05},
+  raider:{hp:50,speed:.055},
+  inferno:{hp:55,speed:.065}
 
 };
 
