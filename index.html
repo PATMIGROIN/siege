@@ -107,6 +107,96 @@ canvas{
   height:1px;
   transform:translate(-50%,-50%);
 }
+/* REFLEX / RED-DOT SIGHT */
+#reflexSight{
+  position:fixed;
+  top:50%;
+  left:50%;
+  width:26px;
+  height:26px;
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+  z-index:7;
+  opacity:0;
+  border:1.5px solid rgba(255,90,60,.85);
+  border-radius:50%;
+  box-shadow:0 0 6px rgba(255,90,60,.35);
+}
+#reflexSight:before{
+  content:'';
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:4px;
+  height:4px;
+  transform:translate(-50%,-50%);
+  background:#ff5a3c;
+  border-radius:50%;
+  box-shadow:0 0 5px #ff5a3c;
+}
+/* HOLOGRAPHIC SIGHT */
+#holoSight{
+  position:fixed;
+  top:50%;
+  left:50%;
+  width:46px;
+  height:46px;
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+  z-index:7;
+  opacity:0;
+  border:1.5px solid rgba(120,230,190,.8);
+  border-radius:50%;
+  box-shadow:0 0 8px rgba(120,230,190,.3), inset 0 0 10px rgba(120,230,190,.12);
+}
+#holoSight:before,
+#holoSight:after{
+  content:'';
+  position:absolute;
+  background:rgba(120,230,190,.85);
+}
+#holoSight:before{
+  top:50%;
+  left:50%;
+  width:2px;
+  height:10px;
+  transform:translate(-50%,-50%);
+}
+#holoSight:after{
+  top:50%;
+  left:50%;
+  width:2px;
+  height:2px;
+  border-radius:50%;
+  transform:translate(-50%,-50%);
+  box-shadow:0 0 4px rgba(120,230,190,.9);
+}
+/* GHOST-RING IRON SIGHT */
+#ghostSight{
+  position:fixed;
+  top:50%;
+  left:50%;
+  width:150px;
+  height:150px;
+  transform:translate(-50%,-50%);
+  pointer-events:none;
+  z-index:7;
+  opacity:0;
+  border:2px solid rgba(20,20,18,.75);
+  border-radius:50%;
+}
+#ghostSight:before{
+  content:'';
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:3px;
+  height:3px;
+  transform:translate(-50%,-50%);
+  background:rgba(20,20,18,.9);
+  border-radius:50%;
+  box-shadow:0 0 0 1px rgba(20,20,18,.9);
+}
 /* HUD */
 #hud{
   position:fixed;
@@ -234,6 +324,22 @@ canvas{
   padding:8px 16px;
   border:1px solid #2a4a6b;
   display:none;
+}
+#spectateHud{
+  position:fixed;
+  bottom:60px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:6;
+  font-size:12px;
+  font-weight:bold;
+  letter-spacing:1.5px;
+  color:#000;
+  background:rgba(232,190,190,.92);
+  padding:8px 18px;
+  border:1px solid #6b2a2a;
+  display:none;
+  text-align:center;
 }
 #msg{
   position:fixed;
@@ -469,6 +575,9 @@ canvas{
 <div id="overdriveOverlay"></div>
 <div id="crosshair"></div>
 <div id="scopeOverlay"></div>
+<div id="reflexSight"></div>
+<div id="holoSight"></div>
+<div id="ghostSight"></div>
 <div id="damageOverlay"></div>
 <div id="hud">
   <div>
@@ -519,6 +628,7 @@ canvas{
 </div>
 <div id="intelHud"></div>
 <div id="cameraHud"></div>
+<div id="spectateHud">ELIMINATED — SPECTATING &middot; YOUR TEAM IS STILL FIGHTING</div>
 <div id="detonate">
   DETONATION IN
   <span id="detVal">12</span>s
@@ -817,12 +927,15 @@ function makeFloorTexture(){
   tex.repeat.set(30,30);
   return tex;
 }
+const floorTex=makeFloorTexture();
 const floorMat=
   new THREE.MeshStandardMaterial({
     color:0x3d4632,
     roughness:.88,
     metalness:.05,
-    map:makeFloorTexture()
+    map:floorTex,
+    bumpMap:floorTex,
+    bumpScale:.035
   });
 const floor=
   new THREE.Mesh(
@@ -891,7 +1004,10 @@ const levelLayouts={
     [16,-4,1,14],
     [16,12,1,10],
     [0,-14,16,1],
-    [0,22,16,1]
+    [0,22,16,1],
+    [10,-16,1,8],
+    [-16,6,8,1],
+    [-2,-4,8,1]
   ],
   urban:[
     [-10,-10,1,20],
@@ -901,7 +1017,9 @@ const levelLayouts={
     [0,20,1,18],
     [-24,4,1,14],
     [14,20,14,1],
-    [-16,-30,1,12]
+    [-16,-30,1,12],
+    [4,-4,1,10],
+    [-6,-24,10,1]
   ],
   industrial:[
     [-14,0,1,26],
@@ -910,7 +1028,9 @@ const levelLayouts={
     [0,14,26,1],
     [-7,-24,1,16],
     [7,24,1,16],
-    [-24,-8,1,12]
+    [-24,-8,1,12],
+    [-4,20,1,10],
+    [20,10,10,1]
   ],
   night:[
     [-8,-8,1,18],
@@ -918,7 +1038,9 @@ const levelLayouts={
     [-20,-14,1,18],
     [18,-18,1,16],
     [0,-4,10,1],
-    [-14,4,10,1]
+    [-14,4,10,1],
+    [10,-10,1,8],
+    [-4,14,10,1]
   ],
   arctic:[
     [-4,-6,1,24],
@@ -926,7 +1048,9 @@ const levelLayouts={
     [-18,20,20,1],
     [14,-20,1,18],
     [0,30,24,1],
-    [-24,-24,1,16]
+    [-24,-24,1,16],
+    [10,4,1,10],
+    [-10,-10,10,1]
   ],
   toxic:[
     [-10,-16,1,14],
@@ -934,14 +1058,18 @@ const levelLayouts={
     [-20,4,14,1],
     [20,-4,14,1],
     [0,-30,1,20],
-    [-30,20,1,16]
+    [-30,20,1,16],
+    [4,10,1,10],
+    [-14,-4,10,1]
   ],
   desert:[
     [-16,-16,1,14],
     [16,16,1,14],
     [0,0,1,10],
     [-28,10,10,1],
-    [28,-10,10,1]
+    [28,-10,10,1],
+    [8,-24,1,10],
+    [-8,20,10,1]
   ],
   volcanic:[
     [-6,-30,1,20],
@@ -949,7 +1077,9 @@ const levelLayouts={
     [-6,10,1,20],
     [6,30,1,10],
     [-20,0,1,30],
-    [20,0,1,30]
+    [20,0,1,30],
+    [12,20,1,10],
+    [-12,-20,10,1]
   ]
 };
 const levelThemes=[
@@ -1231,14 +1361,134 @@ function makeWallTexture(){
   tex.repeat.set(3,1.4);
   return tex;
 }
+const wallTex=makeWallTexture();
 const wallMat=
   new THREE.MeshStandardMaterial({
     color:0x75694f,
     roughness:.85,
     metalness:.04,
-    map:makeWallTexture()
+    map:wallTex,
+    bumpMap:wallTex,
+    bumpScale:.045
   });
 let walls=[];
+let navWaypoints=[];
+let navDistToSite=[];
+/*
+  Bots have no real pathfinding, just line-of-sight-based
+  steering toward a target/objective. On its own that walks
+  straight into any wall standing between a bot and its
+  goal. To fix this properly (a single-step "pick whichever
+  visible waypoint helps most" heuristic still oscillates
+  and dead-ends on multi-wall layouts), build a small
+  visibility graph once per level load: a waypoint just past
+  each end of every wall, plus the level's own defender
+  spots, with an edge between any two waypoints that have
+  clear line of sight between them. Then run one Dijkstra
+  pass from the bomb site to precompute the true shortest
+  walking distance from every waypoint back to the site.
+  At runtime this makes routing a single cheap lookup:
+  among the waypoints currently visible from the bot, pick
+  the one minimizing (distance to it + its precomputed
+  distance to the site) — a proper shortest path over the
+  graph, not a greedy guess, so it doesn't flip-flop as the
+  bot moves.
+*/
+function buildNavWaypoints(){
+  const pts=[];
+  walls.forEach(w=>{
+    if(w.d>=w.w){
+      pts.push({x:w.x,z:w.z-w.d/2-1.4});
+      pts.push({x:w.x,z:w.z+w.d/2+1.4});
+    }
+    else{
+      pts.push({x:w.x-w.w/2-1.4,z:w.z});
+      pts.push({x:w.x+w.w/2+1.4,z:w.z});
+    }
+  });
+  const theme=getLevel();
+  theme.spots.forEach(sp=>
+    pts.push({x:sp.x,z:sp.z})
+  );
+  navWaypoints=
+    pts.filter(p=>
+      p.x>-39&&p.x<39&&
+      p.z>-39&&p.z<39
+    );
+  computeNavGraph();
+}
+function computeNavGraph(){
+  const n=navWaypoints.length;
+  const adj=[];
+  for(let i=0;i<n;i++){
+    adj.push(new Array(n).fill(Infinity));
+  }
+  for(let i=0;i<n;i++){
+    for(let j=i+1;j<n;j++){
+      if(
+        !segmentBlockedByWall(
+          navWaypoints[i].x,navWaypoints[i].z,
+          navWaypoints[j].x,navWaypoints[j].z
+        )
+      ){
+        const w=
+          Math.hypot(
+            navWaypoints[i].x-navWaypoints[j].x,
+            navWaypoints[i].z-navWaypoints[j].z
+          );
+        adj[i][j]=w;
+        adj[j][i]=w;
+      }
+    }
+  }
+  /*
+    Walls only, not decorations, for both edges above and
+    this site-seeding step below — a small crate or prop
+    sitting near/at a node would otherwise be enough to cut
+    that node off from the whole graph. Decorations are
+    small enough that the per-frame local steerAngle() /
+    resolveDecorationCollision() already route around them
+    fine regardless of which waypoint a bot is walking
+    toward, so they don't need to gate the coarse route.
+  */
+  const dist=new Array(n).fill(Infinity);
+  for(let i=0;i<n;i++){
+    if(
+      !segmentBlockedByWall(
+        site.x,site.z,
+        navWaypoints[i].x,navWaypoints[i].z
+      )
+    ){
+      dist[i]=
+        Math.hypot(
+          site.x-navWaypoints[i].x,
+          site.z-navWaypoints[i].z
+        );
+    }
+  }
+  const visited=new Array(n).fill(false);
+  for(let iter=0;iter<n;iter++){
+    let u=-1;
+    let best=Infinity;
+    for(let i=0;i<n;i++){
+      if(!visited[i]&&dist[i]<best){
+        best=dist[i];
+        u=i;
+      }
+    }
+    if(u===-1)
+      break;
+    visited[u]=true;
+    for(let v=0;v<n;v++){
+      if(adj[u][v]<Infinity){
+        const nd=dist[u]+adj[u][v];
+        if(nd<dist[v])
+          dist[v]=nd;
+      }
+    }
+  }
+  navDistToSite=dist;
+}
 function makeWall(
   x,
   z,
@@ -1907,13 +2157,13 @@ function makeBot(pos,op,team,isBetter){
       theme.enemyType
     );
   group.position.set(
-    pos.x+(Math.random()*1.6-.8),
+    pos.x+(Math.random()*.8-.4),
     0,
-    pos.z+(Math.random()*1.6-.8)
+    pos.z+(Math.random()*.8-.4)
   );
   scene.add(group);
-  const hpMul=isBetter?1.15:1;
-  const dmgMul=isBetter?1.1:1;
+  const hpMul=isBetter?1.3:1;
+  const dmgMul=isBetter?1.25:1;
   return {
     group,
     x:group.position.x,
@@ -1923,16 +2173,22 @@ function makeBot(pos,op,team,isBetter){
     op,
     hp:op.maxHp*hpMul,
     maxHp:op.maxHp*hpMul,
-    speed:5.2*op.speedMul*.6,
+    speed:5.2*op.speedMul*(isBetter?.66:.6),
     weaponDmg:op.weapon.dmg*dmgMul,
     fireCdBase:op.weapon.fireCd,
     range:op.weapon.range,
-    accuracyMul:isBetter?1.18:1,
+    accuracyMul:isBetter?1.4:1,
+    isBetter,
     fireCd:0,
     alert:false,
     dead:false,
     isBot:true,
-    walkT:Math.random()*10
+    walkT:Math.random()*10,
+    escapeTimer:0,
+    escapeDir:Math.random()<.5?1:-1,
+    escapeHeading:0,
+    progressTimer:0,
+    lastProgressD:Infinity
   };
 }
 function spawnMatch(){
@@ -1951,18 +2207,32 @@ function spawnMatch(){
     ?'defense'
     :'attack';
   const allyTeam=player.team;
-  const atkSpawn=
-    ()=>({
-      x:-30+(Math.random()*5-2.5),
-      z:0+(Math.random()*5-2.5)
-    });
+  /*
+    Spread the attacking spawn out into evenly-angled slots
+    around the staging point instead of one shared jitter
+    box — random jitter alone lets two bots roll positions
+    right on top of each other. Each slot also gets its own
+    small jitter so it doesn't look like a rigid formation.
+  */
+  const atkSpawnSlot=
+    (i,total)=>{
+      const ang=
+        (i/total)*Math.PI*2+
+        Math.random()*.4;
+      const radius=
+        6+Math.random()*2.5;
+      return {
+        x:-30+Math.cos(ang)*radius,
+        z:0+Math.sin(ang)*radius
+      };
+    };
   for(let i=0;i<5;i++){
     const op=
       PLAYER_OPS[i%PLAYER_OPS.length];
     const pos=
       enemyTeam==='defense'
       ?spots[i]
-      :atkSpawn();
+      :atkSpawnSlot(i,5);
     enemies.push(
       makeBot(pos,op,enemyTeam,true)
     );
@@ -1973,7 +2243,7 @@ function spawnMatch(){
     const pos=
       allyTeam==='defense'
       ?spots[i+1]
-      :atkSpawn();
+      :atkSpawnSlot(i,4);
     allies.push(
       makeBot(pos,op,allyTeam,false)
     );
@@ -1998,6 +2268,7 @@ function loadLevel(idx){
   clearDecorations();
   addDecorations();
   placeMapCameras(theme);
+  buildNavWaypoints();
   spawnMatch();
 }
 /* =========================================================
@@ -2037,6 +2308,9 @@ const player={
   overdriveTimer:0,
   aimT:0,
   aimFov:50,
+  recoilPitch:0,
+  recoilYaw:0,
+  recoilKick:0,
   team:'attack'
 };
 camera.position.set(
@@ -2232,6 +2506,7 @@ let msgTimeout=null;
 let grenades=[];
 let currentOperator=null;
 let viewingCamIndex=-1;
+let hasShownSpectateMsg=false;
 function showMsg(text,ms=2000){
   const el=
     document.getElementById('msg');
@@ -2968,6 +3243,28 @@ function playerShoot(){
     ? player.fireCdBase*.55
     : player.fireCdBase;
   player.ammo--;
+  /*
+    RECOIL KICK — each trigger pull adds an instant
+    impulse; the decay happens once per frame in update().
+    Aiming down sights braces the weapon, so ADS cuts the
+    kick noticeably; crouching/crawling braces it further.
+  */
+  const recoilDef=
+    (currentOperator&&currentOperator.weapon.recoil)||
+    {pitch:.02,yaw:.008};
+  let recoilMul=
+    1-player.aimT*.45;
+  if(player.stance==='crouched')
+    recoilMul*=.8;
+  else if(player.stance==='crawl')
+    recoilMul*=.6;
+  player.recoilPitch+=
+    recoilDef.pitch*recoilMul;
+  player.recoilYaw+=
+    (Math.random()*2-1)*
+    recoilDef.yaw*recoilMul;
+  player.recoilKick=
+    Math.min(1,player.recoilKick+.7);
   const origin=
     camera.position.clone();
   const baseDir=
@@ -3205,7 +3502,8 @@ function botFireAt(shooter,target){
   if(!hit)
     return;
   const isHeadshot=
-    Math.random()<.12;
+    Math.random()<
+    (shooter.isBetter?.17:.12);
   const dmg=
     isHeadshot
     ?9999
@@ -3267,6 +3565,82 @@ function findNearestVisibleTarget(
     dist:bestDist
   };
 }
+/*
+  Bots have no real pathfinding — they just steer toward
+  a target or the objective. Without this, a bot whose
+  straight-line path is blocked by a wall just walks into
+  it and freezes there forever (the collision resolver
+  pushes it back to the same spot every frame). This does
+  a cheap obstacle-avoidance pass: if the desired heading
+  is blocked within a short lookahead, try a fan of
+  alternate headings (increasing angle offsets, alternating
+  left/right, finishing with a full reverse) and use the
+  first one that's actually clear.
+*/
+function steerAngle(bot,desiredAngle){
+  const lookahead=bot.r+1.4;
+  const clear=ang=>{
+    const tx=
+      bot.x+Math.sin(ang)*lookahead;
+    const tz=
+      bot.z+Math.cos(ang)*lookahead;
+    return !lineOfSightBlocked(
+      bot.x,bot.z,tx,tz
+    );
+  };
+  if(clear(desiredAngle))
+    return desiredAngle;
+  const offsets=[
+    .35,-.35,.7,-.7,1.05,-1.05,
+    1.4,-1.4,1.9,-1.9,2.4,-2.4,
+    Math.PI
+  ];
+  for(const off of offsets){
+    const cand=desiredAngle+off;
+    if(clear(cand))
+      return cand;
+  }
+  return desiredAngle;
+}
+/*
+  NAV TARGET — an attacker with no visible enemy just
+  pushes toward the bomb site, but a straight line there is
+  often blocked by a wall (there's no real pathfinding here).
+  The level already hand-places a handful of walkable spot
+  positions around the site (used for defender spawns), so
+  use those as coarse waypoints: if the site itself isn't
+  directly reachable in a straight line, route through
+  whichever visible waypoint shaves the most distance off
+  the remaining trip. As the bot advances, closer waypoints
+  (or the site itself) come into view and it re-targets
+  toward them automatically — a cheap stand-in for real
+  pathfinding that's enough for boxy compound layouts.
+*/
+function pickNavTarget(bot,goalX,goalZ){
+  if(!segmentBlockedByWall(bot.x,bot.z,goalX,goalZ)){
+    return {x:goalX,z:goalZ};
+  }
+  let best=null;
+  let bestCost=Infinity;
+  navWaypoints.forEach((wp,i)=>{
+    if(navDistToSite[i]===Infinity)
+      return;
+    if(
+      segmentBlockedByWall(
+        bot.x,bot.z,wp.x,wp.z
+      )
+    )
+      return;
+    const cost=
+      Math.hypot(wp.x-bot.x,wp.z-bot.z)+
+      navDistToSite[i];
+    if(cost<bestCost){
+      bestCost=cost;
+      best=wp;
+    }
+  });
+  return best||{x:goalX,z:goalZ};
+}
 function runBotAI(bot,opponents,dt){
   if(bot.dead||bot.hp<=0)
     return;
@@ -3287,12 +3661,22 @@ function runBotAI(bot,opponents,dt){
       d=found.dist;
     }
     else{
-      aimX=site.x;
-      aimZ=site.z;
       d=Math.hypot(
         bot.x-site.x,
         bot.z-site.z
       );
+      if(isAttacker){
+        const nav=
+          pickNavTarget(
+            bot,site.x,site.z
+          );
+        aimX=nav.x;
+        aimZ=nav.z;
+      }
+      else{
+        aimX=site.x;
+        aimZ=site.z;
+      }
     }
     const angTo=
       Math.atan2(
@@ -3303,28 +3687,55 @@ function runBotAI(bot,opponents,dt){
       x:bot.x,
       z:bot.z
     };
-    if(target){
-      if(d>9){
-        npos.x+=
-          Math.sin(angTo)*bot.speed*dt;
-        npos.z+=
-          Math.cos(angTo)*bot.speed*dt;
-      }
-      else if(d<5){
-        npos.x-=
-          Math.sin(angTo)*bot.speed*dt*.7;
-        npos.z-=
-          Math.cos(angTo)*bot.speed*dt*.7;
-      }
-    }
-    else if(
-      isAttacker &&
-      d>site.r*.6
-    ){
+    const wantsAdvance=
+      (target&&d>9)||
+      (!target&&isAttacker&&d>site.r*.6);
+    const wantsRetreat=
+      target&&d<5;
+    /*
+      STUCK / ESCAPE — steerAngle() alone can still trap a
+      bot in a concave corner where every candidate heading
+      loops back to the same blocked spot every frame. If a
+      bot has barely moved for half a second while trying
+      to advance/retreat, force it to strafe perpendicular
+      to its goal direction for a bit (classic wall-hug)
+      instead of re-trying the same doomed heading — that's
+      enough to walk it clear of most corners/pockets.
+    */
+    if(bot.escapeTimer>0){
+      bot.escapeTimer-=dt;
+      /*
+        The escape heading is locked in for the whole burst
+        (set below, right when escape is first triggered) —
+        NOT recomputed from the live angTo every frame. With
+        several bots and allies moving around each other,
+        angTo can jump around frame to frame as a target
+        flickers in and out of sight, which would otherwise
+        yank the "consistent side" wall-hug back and forth
+        and cancel out its own progress.
+      */
+      const steer=
+        steerAngle(bot,bot.escapeHeading);
       npos.x+=
-        Math.sin(angTo)*bot.speed*dt;
+        Math.sin(steer)*bot.speed*dt;
       npos.z+=
-        Math.cos(angTo)*bot.speed*dt;
+        Math.cos(steer)*bot.speed*dt;
+    }
+    else if(wantsAdvance){
+      const steer=
+        steerAngle(bot,angTo);
+      npos.x+=
+        Math.sin(steer)*bot.speed*dt;
+      npos.z+=
+        Math.cos(steer)*bot.speed*dt;
+    }
+    else if(wantsRetreat){
+      const steer=
+        steerAngle(bot,angTo+Math.PI);
+      npos.x+=
+        Math.sin(steer)*bot.speed*dt*.7;
+      npos.z+=
+        Math.cos(steer)*bot.speed*dt*.7;
     }
     resolveWallCollisionXZ(
       npos,bot.r
@@ -3338,6 +3749,74 @@ function runBotAI(bot,opponents,dt){
       bot.x,0,bot.z
     );
     bot.group.rotation.y=angTo;
+    /*
+      PROGRESS CHECK — raw per-frame displacement isn't a
+      reliable stuck signal: a bot can oscillate along a
+      wall face (steerAngle flips between "slightly up" and
+      "slightly down" as its relative angle to the goal
+      wobbles) and technically move a little every frame
+      while making zero net progress. Instead, sample actual
+      distance-to-goal every ~0.6s; if that hasn't shrunk
+      enough, the bot is wall-hugging with no reduction in
+      distance and needs to commit to the escape lane.
+      escapeDir is fixed per bot at spawn (not re-rolled)
+      so repeated stuck cycles always hug the same side of
+      an obstacle instead of flip-flopping and canceling
+      out their own progress along it.
+    */
+    if(
+      (wantsAdvance||wantsRetreat) &&
+      bot.escapeTimer<=0
+    ){
+      bot.progressTimer+=dt;
+      if(bot.progressTimer>.6){
+        if(bot.lastProgressD===Infinity){
+          bot.lastProgressD=d;
+        }
+        else{
+          const improved=
+            bot.lastProgressD-d;
+          if(improved<1.0){
+            bot.escapeTimer=
+              2.2+Math.random()*1;
+            /*
+              Pick whichever perpendicular side has more
+              open room right now (checked with a longer
+              probe than steerAngle's own short lookahead)
+              instead of trusting a direction rolled once
+              at spawn — a side that was clear for the last
+              wall a bot hugged may be the wrong side for
+              this one.
+            */
+            const probe=ang=>{
+              const tx=
+                bot.x+Math.sin(ang)*5;
+              const tz=
+                bot.z+Math.cos(ang)*5;
+              return !lineOfSightBlocked(
+                bot.x,bot.z,tx,tz
+              );
+            };
+            const left=
+              angTo+Math.PI/2;
+            const right=
+              angTo-Math.PI/2;
+            const leftClear=probe(left);
+            const rightClear=probe(right);
+            let dir=bot.escapeDir;
+            if(leftClear&&!rightClear)
+              dir=1;
+            else if(rightClear&&!leftClear)
+              dir=-1;
+            bot.escapeDir=dir;
+            bot.escapeHeading=
+              angTo+dir*Math.PI/2;
+          }
+          bot.lastProgressD=d;
+        }
+        bot.progressTimer=0;
+      }
+    }
     bot.fireCd-=dt;
     if(
       target &&
@@ -3347,7 +3826,9 @@ function runBotAI(bot,opponents,dt){
       )
     ){
       bot.fireCd=
-        1.0+Math.random()*.7;
+        bot.isBetter
+        ?.55+Math.random()*.45
+        :1.0+Math.random()*.7;
       botFireAt(bot,target);
     }
   }
@@ -3557,6 +4038,8 @@ function triggerAbility(){
     gameState==='victory' ||
     gameState==='menu'
   )
+    return;
+  if(player.hp<=0)
     return;
   if(!currentOperator)
     return;
@@ -3803,6 +4286,9 @@ function resetRound(){
   player.intelTimer=0;
   player.overdriveTimer=0;
   player.aimT=0;
+  player.recoilPitch=0;
+  player.recoilYaw=0;
+  player.recoilKick=0;
   aiming=false;
   camera.fov=BASE_FOV;
   camera.updateProjectionMatrix();
@@ -3842,8 +4328,24 @@ function resetRound(){
     .getElementById('crosshair')
     .style.opacity=1;
   document
+    .getElementById('crosshair')
+    .style.display='block';
+  document
     .getElementById('scopeOverlay')
     .style.opacity=0;
+  document
+    .getElementById('ammoHud')
+    .style.display='block';
+  document
+    .getElementById('abilityHud')
+    .style.display='block';
+  document
+    .getElementById('stanceHud')
+    .style.display='block';
+  document
+    .getElementById('spectateHud')
+    .style.display='none';
+  hasShownSpectateMsg=false;
   updateHud();
 }
 /* =========================================================
@@ -4053,18 +4555,45 @@ function update(){
     player.aimT;
   camera.updateProjectionMatrix();
   document.getElementById('crosshair').style.opacity=
-    1-player.aimT*.85;
+    Math.max(0,1-player.aimT*1.15);
+  const activeSight=
+    currentOperator
+    ? currentOperator.weapon.sight
+    : null;
   document.getElementById('scopeOverlay').style.opacity=
-    (
-      currentOperator &&
-      currentOperator.id==='warden'
-    )
-    ? player.aimT
-    : 0;
+    activeSight==='scope'?player.aimT:0;
+  document.getElementById('reflexSight').style.opacity=
+    activeSight==='reflex'?player.aimT:0;
+  document.getElementById('holoSight').style.opacity=
+    activeSight==='holo'?player.aimT:0;
+  document.getElementById('ghostSight').style.opacity=
+    activeSight==='ghost'?player.aimT:0;
+  gunGroup.visible=
+    player.aimT<.82&&player.hp>0;
   const spd=baseSpeed*dt;
+  /*
+    RECOIL — each shot adds an instantaneous kick to
+    these offsets (see playerShoot()); here they just
+    decay back toward zero every frame. Because they're
+    kept separate from player.yaw/pitch (which the mouse
+    actually drives), recovery is automatic and never
+    fights the player's own aim.
+  */
+  player.recoilPitch+=
+    (0-player.recoilPitch)*Math.min(1,dt*9);
+  player.recoilYaw+=
+    (0-player.recoilYaw)*Math.min(1,dt*7);
   camera.rotation.order='YXZ';
-  camera.rotation.y=player.yaw;
-  camera.rotation.x=player.pitch;
+  camera.rotation.y=
+    player.yaw+player.recoilYaw;
+  camera.rotation.x=
+    Math.max(
+      -1.45,
+      Math.min(
+        1.45,
+        player.pitch+player.recoilPitch
+      )
+    );
   const forward=
     new THREE.Vector3();
   camera.getWorldDirection(
@@ -4135,12 +4664,16 @@ function update(){
         performance.now()*.012
       )*.012*bobAmount;
   }
+  player.recoilKick+=
+    (0-player.recoilKick)*Math.min(1,dt*14);
   gunGroup.position.x=
     -.34*player.aimT;
   gunGroup.position.y=
-    bobY+.09*player.aimT;
+    bobY+.09*player.aimT+player.recoilKick*.05;
   gunGroup.position.z=
-    .22*player.aimT;
+    .22*player.aimT+player.recoilKick*.16;
+  gunGroup.rotation.x=
+    -player.recoilKick*.09;
   if(player.fireCd>0)
     player.fireCd-=dt;
   if(player.reloadCd>0){
@@ -4153,11 +4686,12 @@ function update(){
     player.abilityCd=
       Math.max(0,player.abilityCd-dt);
   }
-  if(mouseDown&&inputActive)
+  if(mouseDown&&inputActive&&player.hp>0)
     playerShoot();
   if(
     keys['r'] &&
     inputActive &&
+    player.hp>0 &&
     player.ammo<player.maxAmmo &&
     player.reloadCd<=0
   ){
@@ -4167,7 +4701,7 @@ function update(){
      BREACH — a tactical tool available to either side
   ===================================================== */
   let breached=false;
-  if(keys['e']&&inputActive){
+  if(keys['e']&&inputActive&&player.hp>0){
     for(
       const w of walls
     ){
@@ -4239,6 +4773,7 @@ function update(){
     const playerContrib=
       player.team==='attack' &&
       inputActive &&
+      player.hp>0 &&
       playerInZone &&
       keys['e'] &&
       !breached;
@@ -4303,6 +4838,7 @@ function update(){
     const playerDefusing=
       player.team==='defense' &&
       inputActive &&
+      player.hp>0 &&
       playerInZone &&
       keys['e'];
     const anyDefenderDefusing=
@@ -4488,12 +5024,42 @@ function update(){
         return true;
       }
     );
-  /* Player dead */
-  if(player.hp<=0){
-    loseRound(
-      'YOU WERE ELIMINATED'
-    );
+  /*
+    Player dead — rather than ending the whole attempt the
+    instant the player goes down, drop them into a free-fly
+    spectate (their own WASD/mouse-look camera keeps working
+    exactly as before; only their weapon/ability/plant/defuse
+    actions are cut off, gated by player.hp>0 above). The
+    round keeps simulating normally and resolves itself via
+    the existing team-based win/lose checks — a bomb outcome,
+    elimination, or the clock running out — same as if the
+    player were still alive and just not involved.
+  */
+  if(
+    player.hp<=0 &&
+    !hasShownSpectateMsg &&
+    (
+      gameState==='playing'||
+      gameState==='planting'||
+      gameState==='planted'
+    )
+  ){
+    hasShownSpectateMsg=true;
+    showMsg('ELIMINATED — SPECTATING',2200);
+    document.getElementById('ammoHud').style.display='none';
+    document.getElementById('abilityHud').style.display='none';
+    document.getElementById('stanceHud').style.display='none';
+    document.getElementById('crosshair').style.display='none';
   }
+  document.getElementById('spectateHud').style.display=
+    (
+      player.hp<=0 &&
+      (
+        gameState==='playing'||
+        gameState==='planting'||
+        gameState==='planted'
+      )
+    )?'block':'none';
   updateHud();
   renderer.render(
     scene,
@@ -4584,7 +5150,9 @@ const PLAYER_OPS=[
       pellets:1,
       spread:.004,
       range:60,
-      aimFov:55
+      aimFov:55,
+      sight:'reflex',
+      recoil:{pitch:.026,yaw:.009}
     },
     ability:{
       name:'FRAG CHARGE',
@@ -4608,7 +5176,9 @@ const PLAYER_OPS=[
       pellets:1,
       spread:.012,
       range:40,
-      aimFov:60
+      aimFov:60,
+      sight:'reflex',
+      recoil:{pitch:.013,yaw:.007}
     },
     ability:{
       name:'CLOAK PULSE',
@@ -4632,7 +5202,9 @@ const PLAYER_OPS=[
       pellets:8,
       spread:.09,
       range:20,
-      aimFov:68
+      aimFov:68,
+      sight:'ghost',
+      recoil:{pitch:.065,yaw:.022}
     },
     ability:{
       name:'BREACH CHARGE',
@@ -4656,7 +5228,9 @@ const PLAYER_OPS=[
       pellets:1,
       spread:.001,
       range:90,
-      aimFov:30
+      aimFov:30,
+      sight:'scope',
+      recoil:{pitch:.08,yaw:.016}
     },
     ability:{
       name:'DEPLOY SHIELD',
@@ -4680,7 +5254,9 @@ const PLAYER_OPS=[
       pellets:1,
       spread:.003,
       range:65,
-      aimFov:52
+      aimFov:52,
+      sight:'holo',
+      recoil:{pitch:.021,yaw:.009}
     },
     ability:{
       name:'OVERDRIVE',
@@ -4704,7 +5280,9 @@ const PLAYER_OPS=[
       pellets:1,
       spread:.008,
       range:35,
-      aimFov:58
+      aimFov:58,
+      sight:'reflex',
+      recoil:{pitch:.011,yaw:.006}
     },
     ability:{
       name:'INTEL SCAN',
@@ -4732,6 +5310,9 @@ function applyOperatorLoadout(op){
   player.intelTimer=0;
   player.overdriveTimer=0;
   player.aimT=0;
+  player.recoilPitch=0;
+  player.recoilYaw=0;
+  player.recoilKick=0;
   player.aimFov=op.weapon.aimFov;
   aiming=false;
   camera.fov=BASE_FOV;
