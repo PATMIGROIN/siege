@@ -652,6 +652,18 @@ scene.fog = new THREE.Fog(
   30,
   145
 );
+/*
+  Reusable scratch vectors for the per-frame movement math
+  in update() (see below) — allocating fresh THREE.Vector3
+  instances every single frame is a classic source of GC
+  pauses/stutter in a three.js game loop. These are shared,
+  mutated in place with .set()/.copy(), and never escape the
+  frame they're computed in.
+*/
+const _moveForward=new THREE.Vector3();
+const _moveWorldUp=new THREE.Vector3(0,1,0);
+const _moveRight=new THREE.Vector3();
+const _moveDir=new THREE.Vector3();
 const camera = new THREE.PerspectiveCamera(
   75,
   window.innerWidth/window.innerHeight,
@@ -777,16 +789,51 @@ const dustMat=
 const dustPoints=
   new THREE.Points(dustGeo,dustMat);
 scene.add(dustPoints);
+/*
+  Per-theme atmospheric particle behavior. Reusing the same
+  dust-mote Points system (cheap, already GC-optimized) but
+  recoloring and reshaping its motion per map so each theme
+  reads as its own place: rising embers in the volcano,
+  falling snow in the arctic, drifting spores in the swamp,
+  etc.
+*/
+let dustRiseSpeed=.12;
+let dustDriftMag=.05;
+let dustFalling=false;
+function applyAtmoTheme(theme){
+  const a=theme.atmo;
+  if(!a) return;
+  dustMat.color.setHex(a.color);
+  dustMat.size=a.size;
+  dustMat.opacity=a.opacity;
+  dustRiseSpeed=a.speed;
+  dustDriftMag=a.drift;
+  dustFalling=!!a.fall;
+}
 function updateDust(dt){
-  const pos=dustGeo.attributes.position;
+  /*
+    Touch the raw typed array directly instead of the
+    getX/getY/setX/setY accessors, and hoist the
+    time-dependent term out of the loop — this runs for
+    every dust mote every frame, so per-iteration overhead
+    adds up fast.
+  */
+  const arr=dustGeo.attributes.position.array;
+  const t=performance.now()*.0003;
+  const riseStep=dt*dustRiseSpeed*(dustFalling?-1:1);
+  const driftMag=dt*dustDriftMag;
   for(let i=0;i<DUST_COUNT;i++){
-    let y=pos.getY(i)+dt*.12;
-    let x=pos.getX(i)+Math.sin(i+performance.now()*.0003)*dt*.05;
-    if(y>8.2) y=.15;
-    pos.setY(i,y);
-    pos.setX(i,x);
+    const idx=i*3;
+    let y=arr[idx+1]+riseStep;
+    if(dustFalling){
+      if(y<.15) y=8.2;
+    } else {
+      if(y>8.2) y=.15;
+    }
+    arr[idx+1]=y;
+    arr[idx]+=Math.sin(i+t)*driftMag;
   }
-  pos.needsUpdate=true;
+  dustGeo.attributes.position.needsUpdate=true;
   dustPoints.position.x=camera.position.x;
   dustPoints.position.z=camera.position.z;
 }
@@ -851,7 +898,16 @@ lampPositions.forEach(s=>{
   p.position.set(
     s.x,3.2,s.z
   );
-  p.castShadow=true;
+  /*
+    Shadow-casting point lights are brutally expensive —
+    each one is a full 6-face cubemap depth render every
+    frame. With 7 lamps that was 42 extra shadow passes on
+    top of the main scene and the sun's own shadow map,
+    which is almost certainly the biggest single cause of
+    choppiness. The directional sun light still casts real
+    shadows; these just illuminate now.
+  */
+  p.castShadow=false;
   scene.add(p);
   const bulb=
     new THREE.Mesh(
@@ -1108,7 +1164,8 @@ const levelThemes=[
       [0x333c48,0x7a5a2a],
       [0x40382c,0x5a2a5a],
       [0x303a3a,0x8a7030]
-    ]
+    ],
+    atmo:{color:0xd9d9c0,size:.045,opacity:.32,speed:.12,drift:.05,fall:false}
   },
   {
     name:'URBAN RUINS',
@@ -1135,7 +1192,8 @@ const levelThemes=[
       [0x4a2020,0x2a1a1a],
       [0x6a4a2a,0x3a2a1a],
       [0x5a2a2a,0x2a1515]
-    ]
+    ],
+    atmo:{color:0x9a8a7a,size:.05,opacity:.28,speed:.09,drift:.06,fall:false}
   },
   {
     name:'INDUSTRIAL COMPLEX',
@@ -1162,7 +1220,8 @@ const levelThemes=[
       [0x2a323c,0x80d0ff],
       [0x22303a,0x50a0e0],
       [0x1a2530,0x60c8ff]
-    ]
+    ],
+    atmo:{color:0x60d0ff,size:.04,opacity:.4,speed:.28,drift:.04,fall:false}
   },
   {
     name:'NIGHT OPS',
@@ -1189,7 +1248,8 @@ const levelThemes=[
       [0x1a1530,0x8a5aff],
       [0x10101f,0x6a3aff],
       [0x1a1a25,0x9a6aff]
-    ]
+    ],
+    atmo:{color:0x9a6aff,size:.06,opacity:.22,speed:.05,drift:.08,fall:false}
   },
   {
     name:'ARCTIC OUTPOST',
@@ -1216,7 +1276,8 @@ const levelThemes=[
       [0xe0eef2,0x3070b0],
       [0xd0e4ea,0x2868a8],
       [0xc8dae2,0x1858a0]
-    ]
+    ],
+    atmo:{color:0xffffff,size:.07,opacity:.5,speed:.35,drift:.1,fall:true}
   },
   {
     name:'TOXIC SWAMP',
@@ -1243,7 +1304,8 @@ const levelThemes=[
       [0x445a2a,0x60e020],
       [0x334a20,0x90ff70],
       [0x2a4020,0x70e030]
-    ]
+    ],
+    atmo:{color:0x90ff50,size:.055,opacity:.3,speed:.1,drift:.07,fall:false}
   },
   {
     name:'DESERT SIEGE',
@@ -1270,7 +1332,8 @@ const levelThemes=[
       [0xa07840,0x4a3010],
       [0xb89858,0x6a4820],
       [0xc8a868,0x5a4018]
-    ]
+    ],
+    atmo:{color:0xd8b878,size:.06,opacity:.3,speed:.06,drift:.14,fall:false}
   },
   {
     name:'VOLCANIC FORGE',
@@ -1297,7 +1360,8 @@ const levelThemes=[
       [0x401a10,0xff2010],
       [0x351510,0xffaa40],
       [0x2a0c08,0xff5020]
-    ]
+    ],
+    atmo:{color:0xff6a30,size:.05,opacity:.4,speed:.3,drift:.06,fall:false}
   }
 ];
 let currentLevel=0;
@@ -1604,7 +1668,7 @@ function clearDecorations(){
    CRATES
 ========================================================= */
 function addCrate(
-  x,z,scale=1,rotY=0
+  x,z,scale=1,rotY=0,color=0x8a6a3a
 ){
   const crate=
     new THREE.Mesh(
@@ -1614,7 +1678,7 @@ function addCrate(
         1.1*scale
       ),
       new THREE.MeshStandardMaterial({
-        color:0x8a6a3a,
+        color,
         roughness:.85
       })
     );
@@ -1744,9 +1808,210 @@ function addStreetLampPole(
   );
 }
 /* =========================================================
-   DECORATION
+   THEMED PROPS
+   Extra decoration types used to give each map its own
+   visual identity beyond just wall layout and color.
 ========================================================= */
-function addDecorations(){
+function addIceChunk(x,z,scale=1){
+  const geo=new THREE.IcosahedronGeometry(.6*scale,0);
+  const mesh=new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({
+      color:0xbfe6f2,
+      roughness:.15,
+      metalness:.1,
+      transparent:true,
+      opacity:.85
+    })
+  );
+  mesh.position.set(x,.45*scale,z);
+  mesh.rotation.y=Math.random()*Math.PI;
+  mesh.castShadow=true;
+  mesh.receiveShadow=true;
+  scene.add(mesh);
+  trackMesh(mesh);
+  addCollider(x,z,.9*scale,.9*scale);
+}
+function addSnowDrift(x,z,scale=1){
+  const mesh=new THREE.Mesh(
+    new THREE.CylinderGeometry(1*scale,1.3*scale,.3*scale,10),
+    new THREE.MeshStandardMaterial({color:0xeaf4f8,roughness:1})
+  );
+  mesh.position.set(x,.12*scale,z);
+  mesh.receiveShadow=true;
+  scene.add(mesh);
+  trackMesh(mesh);
+}
+function addToxicBarrel(x,z){
+  addBarrel(x,z,0x5a7a2a);
+  const goo=new THREE.Mesh(
+    new THREE.SphereGeometry(.12,8,8),
+    new THREE.MeshBasicMaterial({color:0x9aff40})
+  );
+  goo.position.set(x+.25,1.05,z+.1);
+  scene.add(goo);
+  trackMesh(goo);
+}
+function addToxicPuddle(x,z,scale=1){
+  const mesh=new THREE.Mesh(
+    new THREE.CircleGeometry(1.2*scale,16),
+    new THREE.MeshBasicMaterial({
+      color:0x60ff30,
+      transparent:true,
+      opacity:.4,
+      blending:THREE.AdditiveBlending,
+      depthWrite:false
+    })
+  );
+  mesh.rotation.x=-Math.PI/2;
+  mesh.position.set(x,.03,z);
+  scene.add(mesh);
+  trackMesh(mesh);
+}
+function addLavaRock(x,z,scale=1){
+  const mesh=new THREE.Mesh(
+    new THREE.DodecahedronGeometry(.65*scale,0),
+    new THREE.MeshStandardMaterial({
+      color:0x2a1410,
+      roughness:.95,
+      emissive:0xff3010,
+      emissiveIntensity:.35
+    })
+  );
+  mesh.position.set(x,.4*scale,z);
+  mesh.rotation.y=Math.random()*Math.PI;
+  mesh.castShadow=true;
+  scene.add(mesh);
+  trackMesh(mesh);
+  addCollider(x,z,.9*scale,.9*scale);
+}
+function addLavaVent(x,z,scale=1){
+  const mesh=new THREE.Mesh(
+    new THREE.CircleGeometry(1*scale,14),
+    new THREE.MeshBasicMaterial({
+      color:0xff5a20,
+      transparent:true,
+      opacity:.55,
+      blending:THREE.AdditiveBlending,
+      depthWrite:false
+    })
+  );
+  mesh.rotation.x=-Math.PI/2;
+  mesh.position.set(x,.04,z);
+  scene.add(mesh);
+  trackMesh(mesh);
+  const glow=new THREE.PointLight(0xff5020,.9,4.5,2);
+  glow.position.set(x,.4,z);
+  glow.castShadow=false;
+  scene.add(glow);
+  trackMesh(glow);
+}
+function addCactus(x,z,scale=1){
+  const mat=new THREE.MeshStandardMaterial({color:0x3a6a3a,roughness:.8});
+  const trunk=new THREE.Mesh(
+    new THREE.CylinderGeometry(.22*scale,.26*scale,1.6*scale,8),
+    mat
+  );
+  trunk.position.set(x,.8*scale,z);
+  trunk.castShadow=true;
+  scene.add(trunk);
+  trackMesh(trunk);
+  const arm=new THREE.Mesh(
+    new THREE.CylinderGeometry(.14*scale,.16*scale,.8*scale,8),
+    mat
+  );
+  arm.position.set(x+.3*scale,1.1*scale,z);
+  arm.rotation.z=Math.PI/2.6;
+  arm.castShadow=true;
+  scene.add(arm);
+  trackMesh(arm);
+  addCollider(x,z,.5*scale,.5*scale);
+}
+function addDuneRock(x,z,scale=1){
+  const mesh=new THREE.Mesh(
+    new THREE.IcosahedronGeometry(.55*scale,0),
+    new THREE.MeshStandardMaterial({color:0x9a8058,roughness:1})
+  );
+  mesh.position.set(x,.3*scale,z);
+  mesh.rotation.y=Math.random()*Math.PI;
+  mesh.castShadow=true;
+  mesh.receiveShadow=true;
+  scene.add(mesh);
+  trackMesh(mesh);
+  addCollider(x,z,.8*scale,.8*scale);
+}
+function addShippingContainer(x,z,rotY=0,color=0x4a6a3a){
+  const mesh=new THREE.Mesh(
+    new THREE.BoxGeometry(5.8,2.4,2.2),
+    new THREE.MeshStandardMaterial({color,roughness:.7,metalness:.3})
+  );
+  mesh.position.set(x,1.2,z);
+  mesh.rotation.y=rotY;
+  mesh.castShadow=true;
+  mesh.receiveShadow=true;
+  scene.add(mesh);
+  trackMesh(mesh);
+  const w=Math.abs(Math.cos(rotY))*5.8+Math.abs(Math.sin(rotY))*2.2;
+  const d=Math.abs(Math.sin(rotY))*5.8+Math.abs(Math.cos(rotY))*2.2;
+  addCollider(x,z,w,d);
+}
+function addPipeStack(x,z,rotY=0){
+  const mat=new THREE.MeshStandardMaterial({color:0x5a6a72,roughness:.4,metalness:.7});
+  for(let i=0;i<3;i++){
+    const pipe=new THREE.Mesh(
+      new THREE.CylinderGeometry(.22,.22,3.4,10),
+      mat
+    );
+    pipe.rotation.z=Math.PI/2;
+    pipe.rotation.y=rotY;
+    const off=(i-1)*.5;
+    pipe.position.set(
+      x+Math.sin(rotY)*off,
+      .3+i*.42,
+      z+Math.cos(rotY)*off
+    );
+    pipe.castShadow=true;
+    scene.add(pipe);
+    trackMesh(pipe);
+  }
+  addCollider(x,z,1.4,1.4);
+}
+function addNeonSign(x,z,rotY=0,color=0xff3a8a){
+  const mesh=new THREE.Mesh(
+    new THREE.PlaneGeometry(1.8,.6),
+    new THREE.MeshBasicMaterial({
+      color,
+      transparent:true,
+      opacity:.9,
+      side:THREE.DoubleSide
+    })
+  );
+  mesh.position.set(x,2.6,z);
+  mesh.rotation.y=rotY;
+  scene.add(mesh);
+  trackMesh(mesh);
+  const glow=new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map:glowTex,
+      color,
+      transparent:true,
+      opacity:.55,
+      blending:THREE.AdditiveBlending,
+      depthWrite:false
+    })
+  );
+  glow.scale.set(2.4,1.2,1);
+  glow.position.set(x,2.6,z);
+  scene.add(glow);
+  trackMesh(glow);
+}
+/* =========================================================
+   DECORATION
+   Each map theme gets its own decoration set so the eight
+   maps read as visually distinct locations rather than
+   the same layout in different colors.
+========================================================= */
+function addDecorGreenzone(){
   addCrate(-14,-6,1.2,.3);
   addCrate(-13,-5,.9,1.1);
   addCrate(10,10,1.1,.6);
@@ -1770,6 +2035,127 @@ function addDecorations(){
   addStreetLampPole(24,4);
   addStreetLampPole(-20,-16);
   addStreetLampPole(2,-20);
+}
+function addDecorUrban(){
+  addCrate(-30,-4,1.1,.4,0x5a4c3c);
+  addCrate(-16,-26,.9,.9,0x6a5240);
+  addCrate(18,26,1.2,.2,0x5a4c3c);
+  addBarrel(-6,-16,0x6a3a2a);
+  addBarrel(-5.3,-15.4,0x5a4020);
+  addBarrel(20,-10,0x4a3a2a);
+  addBarrel(-32,-28,0x5a3a30);
+  addSandbagRow(-24,-30,0,4);
+  addSandbagRow(6,16,Math.PI/2,3);
+  addStreetLampPole(-30,-24);
+  addStreetLampPole(-14,-4);
+  addStreetLampPole(10,-16);
+  addStreetLampPole(-2,26);
+  addStreetLampPole(26,10);
+  addNeonSign(-20,-8,Math.PI/2,0xff3a6a);
+  addNeonSign(12,14,0,0x3ad0ff);
+  addNeonSign(-34,-30,Math.PI/2,0xffaa30);
+}
+function addDecorIndustrial(){
+  addShippingContainer(-20,-20,0,0x3a5a6a);
+  addShippingContainer(-20,-14,Math.PI/2,0x4a4a2a);
+  addShippingContainer(18,18,.3,0x2a5a4a);
+  addPipeStack(-4,-24,0);
+  addPipeStack(24,-4,Math.PI/2);
+  addPipeStack(-24,10,0);
+  addBarrel(6,4,0x3a4a5a);
+  addBarrel(6.6,4.6,0x2a3a4a);
+  addBarrel(-10,20,0x40606a);
+  addCrate(2,-4,1.1,.5,0x3a4652);
+  addCrate(-6,18,.9,.2,0x2a3038);
+  addStreetLampPole(10,-6);
+  addStreetLampPole(-14,22);
+}
+function addDecorNightOps(){
+  addCrate(-18,-4,1,.3,0x2a2035);
+  addCrate(4,-18,1.2,.6,0x2a2035);
+  addBarrel(-6,10,0x3a2a4a);
+  addBarrel(12,-4,0x2a1a3a);
+  addSandbagRow(-16,-24,0,4);
+  addStreetLampPole(-6,-4);
+  addStreetLampPole(4,-24);
+  addStreetLampPole(-18,-16);
+  addStreetLampPole(14,-16);
+  addNeonSign(-4,-8,0,0x9a5aff);
+  addNeonSign(8,-28,Math.PI/2,0xff3a8a);
+  addNeonSign(-22,-10,Math.PI/2,0x5aeaff);
+}
+function addDecorArctic(){
+  addIceChunk(10,0,1.3);
+  addIceChunk(-14,16,1);
+  addIceChunk(18,-8,1.1);
+  addIceChunk(-8,-18,.9);
+  addSnowDrift(6,-4,1.4);
+  addSnowDrift(-20,10,1.6);
+  addSnowDrift(20,-28,1.2);
+  addSnowDrift(-4,24,1.5);
+  addCrate(-16,-6,1,.4,0xc8d8dc);
+  addCrate(14,16,.9,.7,0xb8c8d0);
+  addBarrel(-2,10,0x2a5a80);
+  addBarrel(24,-14,0x2a5a80);
+  addStreetLampPole(2,4);
+  addStreetLampPole(-12,-20);
+}
+function addDecorToxic(){
+  addToxicBarrel(-6,-6);
+  addToxicBarrel(-5.3,-5.2);
+  addToxicBarrel(16,10);
+  addToxicBarrel(-22,-2);
+  addToxicPuddle(6,2,1.6);
+  addToxicPuddle(-16,14,1.3);
+  addToxicPuddle(20,-16,1.8);
+  addToxicPuddle(-2,-22,1.4);
+  addCrate(10,-10,1.1,.5,0x3a4a22);
+  addCrate(-24,20,.9,.2,0x2a3a18);
+  addSandbagRow(-8,20,0,3);
+  addStreetLampPole(2,-16);
+  addStreetLampPole(-18,-8);
+}
+function addDecorDesert(){
+  addCactus(-8,-8,1.2);
+  addCactus(14,4,.9);
+  addCactus(-20,18,1.1);
+  addCactus(6,-24,1);
+  addDuneRock(-4,10,1.3);
+  addDuneRock(20,-18,1);
+  addDuneRock(-26,-4,1.2);
+  addDuneRock(10,20,.9);
+  addCrate(0,-4,1.1,.6,0xb89858);
+  addCrate(-14,-20,.9,.2,0xc8a868);
+  addBarrel(16,-4,0x8a6a30);
+  addStreetLampPole(-6,16);
+}
+function addDecorVolcanic(){
+  addLavaRock(-4,0,1.3);
+  addLavaRock(10,-16,1);
+  addLavaRock(-16,10,1.1);
+  addLavaRock(2,20,.9);
+  addLavaVent(-10,-8,1.2);
+  addLavaVent(14,4,1);
+  addLavaVent(-2,-22,1.3);
+  addCrate(-14,-4,1,.4,0x3a1c14);
+  addCrate(8,10,.9,.7,0x2a1410);
+  addBarrel(-8,16,0x4a2a1a);
+  addBarrel(16,-8,0x4a2a1a);
+}
+const decorByLayout={
+  compound:addDecorGreenzone,
+  urban:addDecorUrban,
+  industrial:addDecorIndustrial,
+  night:addDecorNightOps,
+  arctic:addDecorArctic,
+  toxic:addDecorToxic,
+  desert:addDecorDesert,
+  volcanic:addDecorVolcanic
+};
+function addDecorations(){
+  const theme=getLevel();
+  const fn=decorByLayout[theme.layout]||addDecorGreenzone;
+  fn();
 }
 addDecorations();
 /* =========================================================
@@ -2188,7 +2574,9 @@ function makeBot(pos,op,team,isBetter){
     escapeDir:Math.random()<.5?1:-1,
     escapeHeading:0,
     progressTimer:0,
-    lastProgressD:Infinity
+    lastProgressD:Infinity,
+    navTarget:null,
+    navRecalcT:0
   };
 }
 function spawnMatch(){
@@ -2221,10 +2609,25 @@ function spawnMatch(){
         Math.random()*.4;
       const radius=
         6+Math.random()*2.5;
-      return {
+      const p={
         x:-30+Math.cos(ang)*radius,
         z:0+Math.sin(ang)*radius
       };
+      /*
+        A slot can land inside (or right up against) a wall
+        depending on the level's layout — push it clear the
+        same way live collision does, then keep it inside
+        the playable bounds. Run the push a few times: a
+        single pass can leave a point still embedded near a
+        wall corner where two walls' pushes fight each other.
+      */
+      for(let pass=0;pass<3;pass++){
+        resolveWallCollisionXZ(p,.7);
+        resolveDecorationCollision(p,.7);
+      }
+      p.x=Math.max(-38,Math.min(38,p.x));
+      p.z=Math.max(-38,Math.min(38,p.z));
+      return p;
     };
   for(let i=0;i<5;i++){
     const op=
@@ -2263,6 +2666,7 @@ function loadLevel(idx){
   skyMat.uniforms.topColor.value.setHex(theme.sky);
   skyMat.uniforms.bottomColor.value.setHex(theme.fog);
   applyLampColors(theme.lamps);
+  applyAtmoTheme(theme);
   buildLevel();
   applySiteFromTheme(theme);
   clearDecorations();
@@ -3666,12 +4070,22 @@ function runBotAI(bot,opponents,dt){
         bot.z-site.z
       );
       if(isAttacker){
-        const nav=
-          pickNavTarget(
-            bot,site.x,site.z
-          );
-        aimX=nav.x;
-        aimZ=nav.z;
+        /*
+          pickNavTarget() scans every waypoint with a wall
+          raycast each time — reasonable once, wasteful to
+          redo 60x/sec for a target that barely moves. Cache
+          it and only recompute a few times a second.
+        */
+        bot.navRecalcT-=dt;
+        if(!bot.navTarget||bot.navRecalcT<=0){
+          bot.navTarget=
+            pickNavTarget(
+              bot,site.x,site.z
+            );
+          bot.navRecalcT=.3+Math.random()*.2;
+        }
+        aimX=bot.navTarget.x;
+        aimZ=bot.navTarget.z;
       }
       else{
         aimX=site.x;
@@ -3827,8 +4241,8 @@ function runBotAI(bot,opponents,dt){
     ){
       bot.fireCd=
         bot.isBetter
-        ?.55+Math.random()*.45
-        :1.0+Math.random()*.7;
+        ?.3+Math.random()*.25
+        :.6+Math.random()*.4;
       botFireAt(bot,target);
     }
   }
@@ -4261,6 +4675,59 @@ function intelScan(){
   player.intelTimer=6;
   showMsg('DEFENDER POSITIONS TRACKED',1600);
 }
+/*
+  SCAN OUTLINES — while INTEL SCAN is active, draw a glowing
+  wireframe box around every alive defender's silhouette
+  with depthTest off, so it renders straight through walls
+  and cover like a wallhack ping. A small fixed pool of 5
+  (the max squad size) is created once and reused rather
+  than allocating new geometry every scan.
+*/
+const scanOutlineGeo=
+  new THREE.EdgesGeometry(
+    new THREE.BoxGeometry(.7,1.9,.5)
+  );
+const scanOutlines=[];
+for(let i=0;i<5;i++){
+  const line=
+    new THREE.LineSegments(
+      scanOutlineGeo,
+      new THREE.LineBasicMaterial({
+        color:0xff5a3c,
+        transparent:true,
+        opacity:.9,
+        depthTest:false
+      })
+    );
+  line.visible=false;
+  line.renderOrder=999;
+  scene.add(line);
+  scanOutlines.push(line);
+}
+function updateScanOutlines(){
+  const showing=
+    player.intelTimer>0;
+  const aliveEnemies=
+    showing
+    ?enemies.filter(en=>!en.dead)
+    :null;
+  for(let i=0;i<scanOutlines.length;i++){
+    const en=
+      showing?aliveEnemies[i]:null;
+    if(en){
+      scanOutlines[i].position.set(
+        en.x,1.05,en.z
+      );
+      scanOutlines[i].material.opacity=
+        .65+
+        Math.sin(performance.now()*.006+i)*.25;
+      scanOutlines[i].visible=true;
+    }
+    else{
+      scanOutlines[i].visible=false;
+    }
+  }
+}
 /* =========================================================
    RESET ROUND
 ========================================================= */
@@ -4494,6 +4961,7 @@ function update(){
       .getElementById('intelHud')
       .style.display='none';
   }
+  updateScanOutlines();
   const inputActive=
     viewingCamIndex<0;
   const camHudEl=
@@ -4594,24 +5062,21 @@ function update(){
         player.pitch+player.recoilPitch
       )
     );
-  const forward=
-    new THREE.Vector3();
+  const forward=_moveForward;
   camera.getWorldDirection(
     forward
   );
   forward.y=0;
   forward.normalize();
-  const worldUp=
-    new THREE.Vector3(0,1,0);
   const right=
-    new THREE.Vector3()
+    _moveRight
       .crossVectors(
         forward,
-        worldUp
+        _moveWorldUp
       )
       .normalize();
   const moveDir=
-    new THREE.Vector3();
+    _moveDir.set(0,0,0);
   moveDir.addScaledVector(
     forward,
     -mz
