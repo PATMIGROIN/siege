@@ -2719,10 +2719,11 @@ function makeBot(pos,op,team,isBetter){
     weaponDmg:op.weapon.dmg*dmgMul,
     fireCdBase:op.weapon.fireCd,
     range:op.weapon.range,
-    accuracyMul:isBetter?1.4:1,
+    accuracyMul:isBetter?1.1:.8,
     isBetter,
     fireCd:0,
     alert:false,
+    hadTarget:false,
     dead:false,
     isBot:true,
     walkT:Math.random()*10,
@@ -4054,8 +4055,8 @@ function botFireAt(shooter,target){
   );
   const baseChance=
     isPlayer
-    ?(.62*player.noise+.14)
-    :.42;
+    ?(.48*player.noise+.11)
+    :.34;
   const hit=
     Math.random()<
     baseChance*shooter.accuracyMul;
@@ -4063,7 +4064,7 @@ function botFireAt(shooter,target){
     return;
   const isHeadshot=
     Math.random()<
-    (shooter.isBetter?.17:.12);
+    (shooter.isBetter?.12:.08);
   const dmg=
     isHeadshot
     ?9999
@@ -4213,6 +4214,28 @@ function runBotAI(bot,opponents,dt){
     bot.team==='attack';
   if(target||isAttacker)
     bot.alert=true;
+  /*
+    REACTION TIME — a bot that has just spotted a target
+    (as opposed to one already tracking/shooting at it)
+    shouldn't be able to fire the instant line-of-sight
+    opens up. Hold fireCd at a short human-like delay the
+    first frame a new target is acquired; it only counts
+    down from there like a normal cooldown.
+  */
+  if(target){
+    if(!bot.hadTarget){
+      bot.fireCd=Math.max(
+        bot.fireCd,
+        bot.isBetter
+        ?.45+Math.random()*.3
+        :.7+Math.random()*.45
+      );
+    }
+    bot.hadTarget=true;
+  }
+  else{
+    bot.hadTarget=false;
+  }
   if(bot.alert){
     let aimX,aimZ,d;
     if(target){
@@ -4397,8 +4420,8 @@ function runBotAI(bot,opponents,dt){
     ){
       bot.fireCd=
         bot.isBetter
-        ?.3+Math.random()*.25
-        :.6+Math.random()*.4;
+        ?.45+Math.random()*.3
+        :.75+Math.random()*.5;
       botFireAt(bot,target);
     }
   }
