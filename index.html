@@ -80,122 +80,252 @@ canvas{
   width:20px;
   height:2px;
 }
-/* MARKSMAN SCOPE OVERLAY */
+/* =========================================================
+   ADS SIGHTS
+   Styled after the optic families used in Rainbow Six
+   Siege: a true magnified scope with a duplex/BDC reticle
+   and hard lens vignette, an open red-dot reflex sight, an
+   EOTech-style holographic reticle, and a rear-aperture
+   ghost ring with a front sight post.
+========================================================= */
+/* MARKSMAN SCOPE OVERLAY (ACOG-style) */
 #scopeOverlay{
   position:fixed;
   inset:0;
   z-index:7;
   pointer-events:none;
-  background:radial-gradient(circle at 50% 50%, transparent 0, transparent 210px, #000 320px);
   opacity:0;
 }
-#scopeOverlay:before,
-#scopeOverlay:after{
-  content:'';
+/*
+  The black vignette is drawn as a huge spread box-shadow
+  cast by an invisible circle rather than a radial-gradient
+  — a plain transparent-to-opaque radial-gradient renders a
+  bright halo artifact on some GPUs/software rasterizers at
+  the transition ring, and the box-shadow spread technique
+  sidesteps that entirely while still giving a soft feathered
+  edge via its blur radius.
+*/
+#scopeOverlay .lensHole{
   position:absolute;
-  top:50%;
-  left:50%;
-  background:rgba(10,10,10,.85);
+  top:calc(50% - 195px);
+  left:calc(50% - 195px);
+  width:390px;
+  height:390px;
+  border-radius:50%;
+  box-shadow:0 0 34px 9999px #010200;
 }
-#scopeOverlay:before{
+#scopeOverlay .lensTint{
+  position:absolute;
+  top:calc(50% - 195px);
+  left:calc(50% - 195px);
+  width:390px;
+  height:390px;
+  border-radius:50%;
+  background:rgba(150,255,195,.045);
+}
+#scopeOverlay .reticleV{
+  position:absolute;
+  left:50%;
   width:1px;
-  height:220px;
-  transform:translate(-50%,-50%);
+  background:rgba(8,16,8,.88);
+  transform:translateX(-50%);
 }
-#scopeOverlay:after{
-  width:220px;
-  height:1px;
-  transform:translate(-50%,-50%);
-}
-/* REFLEX / RED-DOT SIGHT */
-#reflexSight{
-  position:fixed;
-  top:50%;
-  left:50%;
-  width:26px;
-  height:26px;
-  transform:translate(-50%,-50%);
-  pointer-events:none;
-  z-index:7;
-  opacity:0;
-  border:1.5px solid rgba(255,90,60,.85);
-  border-radius:50%;
-  box-shadow:0 0 6px rgba(255,90,60,.35);
-}
-#reflexSight:before{
-  content:'';
-  position:absolute;
-  top:50%;
-  left:50%;
-  width:4px;
-  height:4px;
-  transform:translate(-50%,-50%);
-  background:#ff5a3c;
-  border-radius:50%;
-  box-shadow:0 0 5px #ff5a3c;
-}
-/* HOLOGRAPHIC SIGHT */
-#holoSight{
-  position:fixed;
-  top:50%;
-  left:50%;
-  width:46px;
-  height:46px;
-  transform:translate(-50%,-50%);
-  pointer-events:none;
-  z-index:7;
-  opacity:0;
-  border:1.5px solid rgba(120,230,190,.8);
-  border-radius:50%;
-  box-shadow:0 0 8px rgba(120,230,190,.3), inset 0 0 10px rgba(120,230,190,.12);
-}
-#holoSight:before,
-#holoSight:after{
-  content:'';
-  position:absolute;
-  background:rgba(120,230,190,.85);
-}
-#holoSight:before{
-  top:50%;
-  left:50%;
-  width:2px;
-  height:10px;
-  transform:translate(-50%,-50%);
-}
-#holoSight:after{
-  top:50%;
-  left:50%;
-  width:2px;
-  height:2px;
-  border-radius:50%;
-  transform:translate(-50%,-50%);
-  box-shadow:0 0 4px rgba(120,230,190,.9);
-}
-/* GHOST-RING IRON SIGHT */
-#ghostSight{
-  position:fixed;
-  top:50%;
-  left:50%;
-  width:150px;
+#scopeOverlay .reticleV.top{
+  top:calc(50% - 158px);
   height:150px;
-  transform:translate(-50%,-50%);
-  pointer-events:none;
-  z-index:7;
-  opacity:0;
-  border:2px solid rgba(20,20,18,.75);
-  border-radius:50%;
 }
-#ghostSight:before{
-  content:'';
+#scopeOverlay .reticleV.bottom{
+  top:calc(50% + 8px);
+  height:150px;
+}
+#scopeOverlay .reticleH{
+  position:absolute;
+  top:50%;
+  height:1px;
+  background:rgba(8,16,8,.88);
+  transform:translateY(-50%);
+}
+#scopeOverlay .reticleH.left{
+  left:calc(50% - 158px);
+  width:150px;
+}
+#scopeOverlay .reticleH.right{
+  left:calc(50% + 8px);
+  width:150px;
+}
+#scopeOverlay .reticleDot{
   position:absolute;
   top:50%;
   left:50%;
   width:3px;
   height:3px;
   transform:translate(-50%,-50%);
-  background:rgba(20,20,18,.9);
+  background:rgba(6,14,6,.9);
   border-radius:50%;
-  box-shadow:0 0 0 1px rgba(20,20,18,.9);
+}
+#scopeOverlay .bdc{
+  position:absolute;
+  left:50%;
+  height:1px;
+  background:rgba(8,16,8,.75);
+  transform:translateX(-50%);
+}
+#scopeOverlay .bdc.b1{
+  top:calc(50% + 26px);
+  width:18px;
+}
+#scopeOverlay .bdc.b2{
+  top:calc(50% + 48px);
+  width:30px;
+}
+#scopeOverlay .bdc.b3{
+  top:calc(50% + 70px);
+  width:42px;
+}
+/* REFLEX / RED-DOT SIGHT — open lens, no blackout, just a
+   crisp dot inside a faint glass housing. */
+#reflexSight{
+  position:fixed;
+  top:50%;
+  left:50%;
+  width:0;
+  height:0;
+  pointer-events:none;
+  z-index:7;
+  opacity:0;
+}
+#reflexSight .lens{
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:58px;
+  height:58px;
+  transform:translate(-50%,-50%);
+  border-radius:50%;
+  background:rgba(255,255,255,.03);
+  box-shadow:0 0 0 1px rgba(255,255,255,.07), inset 0 0 16px rgba(0,0,0,.2);
+}
+#reflexSight .dot{
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:3px;
+  height:3px;
+  transform:translate(-50%,-50%);
+  background:#ff2a1a;
+  border-radius:50%;
+  box-shadow:0 0 4px 1px #ff2a1a, 0 0 12px 5px rgba(255,40,25,.45);
+}
+/* HOLOGRAPHIC SIGHT — EOTech-style ring + center dot with
+   cardinal stadia ticks, viewed through a tinted lens. */
+#holoSight{
+  position:fixed;
+  top:50%;
+  left:50%;
+  width:0;
+  height:0;
+  pointer-events:none;
+  z-index:7;
+  opacity:0;
+}
+#holoSight .lens{
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:72px;
+  height:72px;
+  transform:translate(-50%,-50%);
+  border-radius:50%;
+  background:rgba(120,255,180,.04);
+  box-shadow:0 0 0 1px rgba(150,255,200,.08);
+}
+#holoSight .ring{
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:32px;
+  height:32px;
+  transform:translate(-50%,-50%);
+  border:1.4px solid rgba(255,120,40,.85);
+  border-radius:50%;
+  box-shadow:0 0 6px rgba(255,120,40,.35);
+}
+#holoSight .dot{
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:3px;
+  height:3px;
+  transform:translate(-50%,-50%);
+  background:#ff7828;
+  border-radius:50%;
+  box-shadow:0 0 5px #ff7828;
+}
+#holoSight .tick{
+  position:absolute;
+  background:rgba(255,120,40,.75);
+}
+#holoSight .tickN,
+#holoSight .tickS{
+  left:50%;
+  width:1.4px;
+  height:9px;
+  transform:translateX(-50%);
+}
+#holoSight .tickN{ top:calc(50% - 26px); }
+#holoSight .tickS{ top:calc(50% + 17px); }
+#holoSight .tickE,
+#holoSight .tickW{
+  top:50%;
+  height:1.4px;
+  width:9px;
+  transform:translateY(-50%);
+}
+#holoSight .tickE{ left:calc(50% + 17px); }
+#holoSight .tickW{ left:calc(50% - 26px); }
+/* GHOST-RING IRON SIGHT — rear aperture ring with a front
+   sight post rising into frame, like an AR/shotgun iron
+   sight picture. */
+#ghostSight{
+  position:fixed;
+  top:50%;
+  left:50%;
+  width:0;
+  height:0;
+  pointer-events:none;
+  z-index:7;
+  opacity:0;
+}
+#ghostSight .rearRing{
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:132px;
+  height:132px;
+  transform:translate(-50%,-50%);
+  border:2.5px solid rgba(14,14,13,.82);
+  border-radius:50%;
+  box-shadow:0 0 0 1px rgba(0,0,0,.12);
+}
+#ghostSight .frontPost{
+  position:absolute;
+  top:calc(50% - 8px);
+  left:50%;
+  width:3px;
+  height:120px;
+  transform:translateX(-50%);
+  background:linear-gradient(to bottom, rgba(12,12,11,.95), rgba(12,12,11,.88));
+}
+#ghostSight .frontDot{
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:4px;
+  height:4px;
+  transform:translate(-50%,-50%);
+  background:rgba(12,12,11,.95);
+  border-radius:50%;
+  box-shadow:0 0 0 1px rgba(0,0,0,.35);
 }
 /* HUD */
 #hud{
@@ -574,10 +704,36 @@ canvas{
 <div id="cloakOverlay"></div>
 <div id="overdriveOverlay"></div>
 <div id="crosshair"></div>
-<div id="scopeOverlay"></div>
-<div id="reflexSight"></div>
-<div id="holoSight"></div>
-<div id="ghostSight"></div>
+<div id="scopeOverlay">
+  <i class="lensHole"></i>
+  <i class="lensTint"></i>
+  <i class="reticleV top"></i>
+  <i class="reticleV bottom"></i>
+  <i class="reticleH left"></i>
+  <i class="reticleH right"></i>
+  <i class="reticleDot"></i>
+  <i class="bdc b1"></i>
+  <i class="bdc b2"></i>
+  <i class="bdc b3"></i>
+</div>
+<div id="reflexSight">
+  <i class="lens"></i>
+  <i class="dot"></i>
+</div>
+<div id="holoSight">
+  <i class="lens"></i>
+  <i class="ring"></i>
+  <i class="dot"></i>
+  <i class="tick tickN"></i>
+  <i class="tick tickS"></i>
+  <i class="tick tickE"></i>
+  <i class="tick tickW"></i>
+</div>
+<div id="ghostSight">
+  <i class="rearRing"></i>
+  <i class="frontPost"></i>
+  <i class="frontDot"></i>
+</div>
 <div id="damageOverlay"></div>
 <div id="hud">
   <div>
