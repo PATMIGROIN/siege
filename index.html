@@ -1321,7 +1321,8 @@ const levelThemes=[
       [0x40382c,0x5a2a5a],
       [0x303a3a,0x8a7030]
     ],
-    atmo:{color:0xd9d9c0,size:.045,opacity:.32,speed:.12,drift:.05,fall:false}
+    atmo:{color:0xd9d9c0,size:.045,opacity:.32,speed:.12,drift:.05,fall:false},
+    atkSpawn:{x:-30,z:-6}
   },
   {
     name:'URBAN RUINS',
@@ -1349,7 +1350,8 @@ const levelThemes=[
       [0x6a4a2a,0x3a2a1a],
       [0x5a2a2a,0x2a1515]
     ],
-    atmo:{color:0x9a8a7a,size:.05,opacity:.28,speed:.09,drift:.06,fall:false}
+    atmo:{color:0x9a8a7a,size:.05,opacity:.28,speed:.09,drift:.06,fall:false},
+    atkSpawn:{x:30,z:26}
   },
   {
     name:'INDUSTRIAL COMPLEX',
@@ -1377,7 +1379,8 @@ const levelThemes=[
       [0x22303a,0x50a0e0],
       [0x1a2530,0x60c8ff]
     ],
-    atmo:{color:0x60d0ff,size:.04,opacity:.4,speed:.28,drift:.04,fall:false}
+    atmo:{color:0x60d0ff,size:.04,opacity:.4,speed:.28,drift:.04,fall:false},
+    atkSpawn:{x:0,z:-28}
   },
   {
     name:'NIGHT OPS',
@@ -1405,7 +1408,8 @@ const levelThemes=[
       [0x10101f,0x6a3aff],
       [0x1a1a25,0x9a6aff]
     ],
-    atmo:{color:0x9a6aff,size:.06,opacity:.22,speed:.05,drift:.08,fall:false}
+    atmo:{color:0x9a6aff,size:.06,opacity:.22,speed:.05,drift:.08,fall:false},
+    atkSpawn:{x:6,z:28}
   },
   {
     name:'ARCTIC OUTPOST',
@@ -1433,7 +1437,8 @@ const levelThemes=[
       [0xd0e4ea,0x2868a8],
       [0xc8dae2,0x1858a0]
     ],
-    atmo:{color:0xffffff,size:.07,opacity:.5,speed:.35,drift:.1,fall:true}
+    atmo:{color:0xffffff,size:.07,opacity:.5,speed:.35,drift:.1,fall:true},
+    atkSpawn:{x:-26,z:26}
   },
   {
     name:'TOXIC SWAMP',
@@ -1461,7 +1466,8 @@ const levelThemes=[
       [0x334a20,0x90ff70],
       [0x2a4020,0x70e030]
     ],
-    atmo:{color:0x90ff50,size:.055,opacity:.3,speed:.1,drift:.07,fall:false}
+    atmo:{color:0x90ff50,size:.055,opacity:.3,speed:.1,drift:.07,fall:false},
+    atkSpawn:{x:28,z:-28}
   },
   {
     name:'DESERT SIEGE',
@@ -1489,7 +1495,8 @@ const levelThemes=[
       [0xb89858,0x6a4820],
       [0xc8a868,0x5a4018]
     ],
-    atmo:{color:0xd8b878,size:.06,opacity:.3,speed:.06,drift:.14,fall:false}
+    atmo:{color:0xd8b878,size:.06,opacity:.3,speed:.06,drift:.14,fall:false},
+    atkSpawn:{x:-30,z:-28}
   },
   {
     name:'VOLCANIC FORGE',
@@ -1517,7 +1524,8 @@ const levelThemes=[
       [0x351510,0xffaa40],
       [0x2a0c08,0xff5020]
     ],
-    atmo:{color:0xff6a30,size:.05,opacity:.4,speed:.3,drift:.06,fall:false}
+    atmo:{color:0xff6a30,size:.05,opacity:.4,speed:.3,drift:.06,fall:false},
+    atkSpawn:{x:30,z:28}
   }
 ];
 let currentLevel=0;
@@ -2759,16 +2767,17 @@ function spawnMatch(){
     right on top of each other. Each slot also gets its own
     small jitter so it doesn't look like a rigid formation.
   */
+  const atkAnchor=theme.atkSpawn;
   const atkSpawnSlot=
     (i,total)=>{
       const ang=
         (i/total)*Math.PI*2+
         Math.random()*.4;
       const radius=
-        6+Math.random()*2.5;
+        8+Math.random()*3.5;
       const p={
-        x:-30+Math.cos(ang)*radius,
-        z:0+Math.sin(ang)*radius
+        x:atkAnchor.x+Math.cos(ang)*radius,
+        z:atkAnchor.z+Math.sin(ang)*radius
       };
       /*
         A slot can land inside (or right up against) a wall
@@ -4309,33 +4318,33 @@ function runBotAI(bot,opponents,dt){
       */
       const steer=
         steerAngle(bot,bot.escapeHeading);
-      npos.x+=
-        Math.sin(steer)*bot.speed*dt;
-      npos.z+=
-        Math.cos(steer)*bot.speed*dt;
+      moveWithCollision(
+        npos,
+        Math.sin(steer)*bot.speed*dt,
+        Math.cos(steer)*bot.speed*dt,
+        bot.r
+      );
     }
     else if(wantsAdvance){
       const steer=
         steerAngle(bot,angTo);
-      npos.x+=
-        Math.sin(steer)*bot.speed*dt;
-      npos.z+=
-        Math.cos(steer)*bot.speed*dt;
+      moveWithCollision(
+        npos,
+        Math.sin(steer)*bot.speed*dt,
+        Math.cos(steer)*bot.speed*dt,
+        bot.r
+      );
     }
     else if(wantsRetreat){
       const steer=
         steerAngle(bot,angTo+Math.PI);
-      npos.x+=
-        Math.sin(steer)*bot.speed*dt*.7;
-      npos.z+=
-        Math.cos(steer)*bot.speed*dt*.7;
+      moveWithCollision(
+        npos,
+        Math.sin(steer)*bot.speed*dt*.7,
+        Math.cos(steer)*bot.speed*dt*.7,
+        bot.r
+      );
     }
-    resolveWallCollisionXZ(
-      npos,bot.r
-    );
-    resolveDecorationCollision(
-      npos,bot.r
-    );
     bot.x=npos.x;
     bot.z=npos.z;
     bot.group.position.set(
@@ -4542,6 +4551,49 @@ function resolveWallCollisionXZ(
       continue;
     const hw=w.w/2;
     const hd=w.d/2;
+    /*
+      DEEP PENETRATION — a fast enough move (sprint stacked
+      with the cloak ability's speed bonus, or just a
+      hitched/large dt) can land a position's CENTER fully
+      inside a thin wall's footprint in a single step. The
+      closest-point method below assumes the point is
+      outside (or barely inside) the box; when it's deep
+      inside, "closest point" degenerates to the point
+      itself, distance collapses to 0, and the old fallback
+      pushed a fixed, arbitrary direction — which, depending
+      on which side was entered from, could shove the entity
+      OUT THE FAR FACE instead of back where it came from.
+      That's the "phase through walls" bug. Detect full
+      containment first and eject along whichever axis has
+      the LEAST penetration (standard AABB minimum
+      translation vector) — that's always the short way out,
+      regardless of entry side or speed.
+    */
+    const insideX=
+      pos.x>w.x-hw&&pos.x<w.x+hw;
+    const insideZ=
+      pos.z>w.z-hd&&pos.z<w.z+hd;
+    if(insideX&&insideZ){
+      const penLeft=pos.x-(w.x-hw);
+      const penRight=(w.x+hw)-pos.x;
+      const penNear=pos.z-(w.z-hd);
+      const penFar=(w.z+hd)-pos.z;
+      const minX=Math.min(penLeft,penRight);
+      const minZ=Math.min(penNear,penFar);
+      if(minX<minZ){
+        pos.x+=
+          penLeft<penRight
+          ?-(penLeft+r)
+          :(penRight+r);
+      }
+      else{
+        pos.z+=
+          penNear<penFar
+          ?-(penNear+r)
+          :(penFar+r);
+      }
+      continue;
+    }
     const cx=
       Math.max(
         w.x-hw,
@@ -4588,6 +4640,35 @@ function resolveDecorationCollision(
   ){
     const hw=d.w/2;
     const hd=d.d/2;
+    /* Same deep-penetration fix as resolveWallCollisionXZ —
+       see the comment there. Large props (shipping
+       containers especially) are wide enough that a fast
+       move can land fully inside their footprint too. */
+    const insideX=
+      pos.x>d.x-hw&&pos.x<d.x+hw;
+    const insideZ=
+      pos.z>d.z-hd&&pos.z<d.z+hd;
+    if(insideX&&insideZ){
+      const penLeft=pos.x-(d.x-hw);
+      const penRight=(d.x+hw)-pos.x;
+      const penNear=pos.z-(d.z-hd);
+      const penFar=(d.z+hd)-pos.z;
+      const minX=Math.min(penLeft,penRight);
+      const minZ=Math.min(penNear,penFar);
+      if(minX<minZ){
+        pos.x+=
+          penLeft<penRight
+          ?-(penLeft+r)
+          :(penRight+r);
+      }
+      else{
+        pos.z+=
+          penNear<penFar
+          ?-(penNear+r)
+          :(penFar+r);
+      }
+      continue;
+    }
     const cx=
       Math.max(
         d.x-hw,
@@ -4616,6 +4697,36 @@ function resolveDecorationCollision(
       pos.x+=dx/dist*push;
       pos.z+=dz/dist*push;
     }
+  }
+}
+/*
+  SUBSTEPPED MOVEMENT — belt-and-suspenders against wall
+  tunneling on top of the deep-penetration fix above. A
+  single frame's displacement can spike (sprint stacked
+  with the cloak ability's speed bonus, or a lag hitch
+  pushing dt toward its clamp) close to a wall's full
+  thickness; resolving collision only once, after the
+  whole move is applied, still risks landing past a wall's
+  center where the "least penetration" side is the far
+  one. Slicing the move into short segments and resolving
+  collision after each keeps every intermediate position
+  shallow, so it never has the chance to end up deep
+  enough inside a wall for that ambiguity to matter.
+*/
+const MOVE_SUBSTEP=.3;
+function moveWithCollision(pos,dx,dz,r){
+  const dist=Math.hypot(dx,dz);
+  if(dist<.0001)
+    return;
+  const steps=
+    Math.max(1,Math.ceil(dist/MOVE_SUBSTEP));
+  const sx=dx/steps;
+  const sz=dz/steps;
+  for(let i=0;i<steps;i++){
+    pos.x+=sx;
+    pos.z+=sz;
+    resolveWallCollisionXZ(pos,r);
+    resolveDecorationCollision(pos,r);
   }
 }
 /* =========================================================
@@ -4917,8 +5028,8 @@ function resetRound(){
     player.z=spawnTheme.spots[0].z;
   }
   else{
-    player.x=-30;
-    player.z=0;
+    player.x=spawnTheme.atkSpawn.x;
+    player.z=spawnTheme.atkSpawn.z;
   }
   viewingCamIndex=-1;
   defuseProgress=0;
@@ -5267,19 +5378,13 @@ function update(){
   if(moveDir.lengthSq()>0)
     moveDir.normalize();
   const newPos={
-    x:
-      player.x+
-      moveDir.x*spd,
-    z:
-      player.z+
-      moveDir.z*spd
+    x:player.x,
+    z:player.z
   };
-  resolveWallCollisionXZ(
+  moveWithCollision(
     newPos,
-    player.r
-  );
-  resolveDecorationCollision(
-    newPos,
+    moveDir.x*spd,
+    moveDir.z*spd,
     player.r
   );
   newPos.x=
