@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Rainbow 6 Siege</title>
+<title>Breach Protocol: Siege</title>
 <style>
 html,body{
   margin:0;
@@ -88,6 +88,114 @@ canvas{
    EOTech-style holographic reticle, and a rear-aperture
    ghost ring with a front sight post.
 ========================================================= */
+/*
+  OPTIC TUBE HOUSING — shared by all four sights: looking
+  down the sight is rendered as looking through a physical
+  optic tube (concentric machined-metal rings plus mounting
+  bolts) rather than a flat HUD reticle floating on screen.
+  Each sight sets --r (its viewing aperture radius) and --bd
+  (bolt placement distance) on its own root element so the
+  shared .hRing/.bolt rules below just inherit the right size.
+
+  The rings are five actual stacked circular elements (each
+  a solid filled disc, largest painted first / smallest last
+  so it visually reads as concentric rings) rather than a
+  single box-shadow with growing spread — this sandbox's
+  software rasterizer does NOT apply border-radius to a
+  box-shadow's spread growth (confirmed: even a 20px spread
+  on a border-radius:50% source renders as a hard-cornered
+  square), so real sized circles are the only reliable way
+  to get true rings here. A plain transparent-to-opaque
+  radial-gradient has its own separate halo-artifact bug on
+  this rasterizer, so that's avoided too (see .scopeBlackout,
+  which sidesteps it with a hard, zero-width mask stop).
+*/
+.hRing{
+  position:absolute;
+  top:50%;
+  left:50%;
+  border-radius:50%;
+  transform:translate(-50%,-50%);
+}
+.hRing.r1{
+  width:calc((var(--r) + 27px)*2);
+  height:calc((var(--r) + 27px)*2);
+  background:#0c0a08;
+}
+.hRing.r2{
+  width:calc((var(--r) + 22px)*2);
+  height:calc((var(--r) + 22px)*2);
+  background:#26221d;
+}
+.hRing.r3{
+  width:calc((var(--r) + 13px)*2);
+  height:calc((var(--r) + 13px)*2);
+  background:#100e0b;
+}
+.hRing.r4{
+  width:calc((var(--r) + 9px)*2);
+  height:calc((var(--r) + 9px)*2);
+  background:#2c2924;
+}
+.hRing.r5{
+  width:calc((var(--r) + 2px)*2);
+  height:calc((var(--r) + 2px)*2);
+  background:#14120f;
+}
+/* Full-screen blackout — SCOPE ONLY (a true magnified optic
+   tunnels your whole view down the tube). The reflex, holo
+   and ghost-ring sights stay open with just the ring housing
+   around the reticle, matching how those optics actually
+   work. The hole is a hard (zero-width) mask stop, not a
+   blended gradient, so there's no interpolation and thus no
+   halo artifact. */
+.scopeBlackout{
+  position:fixed;
+  inset:0;
+  background:#030302;
+  -webkit-mask-image:radial-gradient(circle at center, transparent 0 calc(var(--r) + 27px), black calc(var(--r) + 27px) 100%);
+  mask-image:radial-gradient(circle at center, transparent 0 calc(var(--r) + 27px), black calc(var(--r) + 27px) 100%);
+}
+.bolt{
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:5px;
+  height:5px;
+  border-radius:50%;
+  background:#1a1a1a;
+  box-shadow:
+    0 0 0 1px #050505,
+    inset -1px -1px 0 rgba(255,255,255,.1);
+}
+.bolt.bNE{
+  transform:
+    translate(
+      calc(-50% + var(--bd)),
+      calc(-50% - var(--bd))
+    );
+}
+.bolt.bSE{
+  transform:
+    translate(
+      calc(-50% + var(--bd)),
+      calc(-50% + var(--bd))
+    );
+}
+.bolt.bSW{
+  transform:
+    translate(
+      calc(-50% - var(--bd)),
+      calc(-50% + var(--bd))
+    );
+}
+.bolt.bNW{
+  transform:
+    translate(
+      calc(-50% - var(--bd)),
+      calc(-50% - var(--bd))
+    );
+}
 /* MARKSMAN SCOPE OVERLAY (ACOG-style) */
 #scopeOverlay{
   position:fixed;
@@ -95,24 +203,8 @@ canvas{
   z-index:7;
   pointer-events:none;
   opacity:0;
-}
-/*
-  The black vignette is drawn as a huge spread box-shadow
-  cast by an invisible circle rather than a radial-gradient
-  — a plain transparent-to-opaque radial-gradient renders a
-  bright halo artifact on some GPUs/software rasterizers at
-  the transition ring, and the box-shadow spread technique
-  sidesteps that entirely while still giving a soft feathered
-  edge via its blur radius.
-*/
-#scopeOverlay .lensHole{
-  position:absolute;
-  top:calc(50% - 195px);
-  left:calc(50% - 195px);
-  width:390px;
-  height:390px;
-  border-radius:50%;
-  box-shadow:0 0 34px 9999px #010200;
+  --r:195px;
+  --bd:149px;
 }
 #scopeOverlay .lensTint{
   position:absolute;
@@ -193,6 +285,8 @@ canvas{
   pointer-events:none;
   z-index:7;
   opacity:0;
+  --r:52px;
+  --bd:46px;
 }
 #reflexSight .lens{
   position:absolute;
@@ -227,6 +321,8 @@ canvas{
   pointer-events:none;
   z-index:7;
   opacity:0;
+  --r:64px;
+  --bd:57px;
 }
 #holoSight .lens{
   position:absolute;
@@ -295,6 +391,8 @@ canvas{
   pointer-events:none;
   z-index:7;
   opacity:0;
+  --r:118px;
+  --bd:95px;
 }
 #ghostSight .rearRing{
   position:absolute;
@@ -489,6 +587,35 @@ canvas{
   pointer-events:none;
   box-shadow:0 4px 20px rgba(0,0,0,.45);
 }
+/* KILL CAM banner — shown while the cinematic replay plays.
+   Faded via opacity (not display) so it can transition
+   smoothly in/out around the freeze-framed cam. */
+#killCamBanner{
+  position:fixed;
+  top:9%;
+  left:50%;
+  transform:translate(-50%,0);
+  font-size:26px;
+  letter-spacing:5px;
+  color:#ffd9d0;
+  font-weight:bold;
+  background:rgba(20,10,8,.72);
+  padding:12px 30px;
+  border:1px solid #ff5a3c;
+  z-index:8;
+  text-align:center;
+  pointer-events:none;
+  opacity:0;
+  transition:opacity .25s ease;
+  box-shadow:0 4px 24px rgba(0,0,0,.6);
+}
+#killCamBanner .killCamSub{
+  margin-top:4px;
+  font-size:13px;
+  letter-spacing:2.5px;
+  color:#c9b8b0;
+  font-weight:normal;
+}
 /* MENU */
 #menuScreen{
   position:fixed;
@@ -619,6 +746,43 @@ canvas{
   color:#5aa8d9;
   box-shadow:0 0 10px rgba(90,168,217,.3);
 }
+#skinGrid{
+  display:flex;
+  gap:12px;
+  justify-content:center;
+  margin-bottom:6px;
+  flex-wrap:wrap;
+}
+.skinChip{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:5px;
+  cursor:pointer;
+  padding:6px 10px;
+  border:1px solid transparent;
+  transition:border-color .15s, box-shadow .15s;
+}
+.skinChip .skinSwatch{
+  width:34px;
+  height:22px;
+  border:1px solid rgba(0,0,0,.5);
+}
+.skinChip .skinName{
+  font-size:9.5px;
+  letter-spacing:1px;
+  color:#9a9a86;
+}
+.skinChip:hover .skinName{
+  color:#c9c9b0;
+}
+.skinChip.selected{
+  border-color:#c9d94a;
+  box-shadow:0 0 10px rgba(201,217,74,.3);
+}
+.skinChip.selected .skinName{
+  color:#c9d94a;
+}
 #menuFooter{
   margin-top:24px;
   display:flex;
@@ -683,6 +847,8 @@ canvas{
   <h1>BREACH PROTOCOL</h1>
   <p class="menuSub">SELECT YOUR OPERATOR</p>
   <div id="operatorGrid"></div>
+  <p class="menuSub" style="margin-top:22px;">SELECT WEAPON SKIN</p>
+  <div id="skinGrid"></div>
   <p class="menuSub" style="margin-top:22px;">SELECT MAP</p>
   <div id="mapGrid"></div>
   <p class="menuSub" style="margin-top:22px;">SELECT SIDE</p>
@@ -690,9 +856,9 @@ canvas{
   <div id="menuFooter">
     <div id="controlsInfo">
       <b>WASD</b> MOVE &middot; <b>MOUSE</b> LOOK &middot; <b>CLICK</b> SHOOT &middot;
-      <b>RIGHT-CLICK</b> AIM &middot; <b>E</b> BREACH/PLANT &middot; <b>Q</b> OPERATOR ABILITY
+      <b>RIGHT-CLICK</b> AIM &middot; <b>F</b> BREACH/DEFUSE &middot; <b>G</b> OPERATOR ABILITY
       <br>
-      <b>SHIFT</b> SPRINT &middot; <b>C</b> CROUCH &middot; <b>CTRL</b> CRAWL &middot; <b>R</b> RELOAD
+      <b>SHIFT</b> SPRINT &middot; <b>C</b> CROUCH &middot; <b>CTRL</b> CRAWL &middot; <b>R</b> RELOAD &middot; <b>Q/E</b> TILT
     </div>
     <button id="deployBtn">DEPLOY</button>
     <div id="hint">
@@ -705,7 +871,16 @@ canvas{
 <div id="overdriveOverlay"></div>
 <div id="crosshair"></div>
 <div id="scopeOverlay">
-  <i class="lensHole"></i>
+  <i class="scopeBlackout"></i>
+  <i class="hRing r1"></i>
+  <i class="hRing r2"></i>
+  <i class="hRing r3"></i>
+  <i class="hRing r4"></i>
+  <i class="hRing r5"></i>
+  <i class="bolt bNE"></i>
+  <i class="bolt bSE"></i>
+  <i class="bolt bSW"></i>
+  <i class="bolt bNW"></i>
   <i class="lensTint"></i>
   <i class="reticleV top"></i>
   <i class="reticleV bottom"></i>
@@ -717,10 +892,28 @@ canvas{
   <i class="bdc b3"></i>
 </div>
 <div id="reflexSight">
+  <i class="hRing r1"></i>
+  <i class="hRing r2"></i>
+  <i class="hRing r3"></i>
+  <i class="hRing r4"></i>
+  <i class="hRing r5"></i>
+  <i class="bolt bNE"></i>
+  <i class="bolt bSE"></i>
+  <i class="bolt bSW"></i>
+  <i class="bolt bNW"></i>
   <i class="lens"></i>
   <i class="dot"></i>
 </div>
 <div id="holoSight">
+  <i class="hRing r1"></i>
+  <i class="hRing r2"></i>
+  <i class="hRing r3"></i>
+  <i class="hRing r4"></i>
+  <i class="hRing r5"></i>
+  <i class="bolt bNE"></i>
+  <i class="bolt bSE"></i>
+  <i class="bolt bSW"></i>
+  <i class="bolt bNW"></i>
   <i class="lens"></i>
   <i class="ring"></i>
   <i class="dot"></i>
@@ -730,6 +923,15 @@ canvas{
   <i class="tick tickW"></i>
 </div>
 <div id="ghostSight">
+  <i class="hRing r1"></i>
+  <i class="hRing r2"></i>
+  <i class="hRing r3"></i>
+  <i class="hRing r4"></i>
+  <i class="hRing r5"></i>
+  <i class="bolt bNE"></i>
+  <i class="bolt bSE"></i>
+  <i class="bolt bSW"></i>
+  <i class="bolt bNW"></i>
   <i class="rearRing"></i>
   <i class="frontPost"></i>
   <i class="frontDot"></i>
@@ -744,7 +946,10 @@ canvas{
     </div>
   </div>
   <div>
-    ROUND <span id="roundVal">1</span>
+    ROUND <span id="roundVal">1</span> (BO3)
+  </div>
+  <div>
+    MATCH <span id="matchScoreVal">0-0</span>
   </div>
   <div>
     AREA <span id="areaVal">GREENZONE COMPOUND</span>
@@ -776,7 +981,7 @@ canvas{
   STANCE: <span id="stanceVal">STANDING</span>
 </div>
 <div id="abilityHud">
-  <div>ABILITY [Q]: <span id="abilityName">-</span></div>
+  <div>ABILITY [G]: <span id="abilityName">-</span></div>
   <div class="abilityRow">
     <span id="abilityVal">READY</span>
     <div class="bar"><i id="abilityBar" style="background:#7fd8ff;width:120px;"></i></div>
@@ -786,14 +991,14 @@ canvas{
 <div id="cameraHud"></div>
 <div id="spectateHud">ELIMINATED — SPECTATING &middot; YOUR TEAM IS STILL FIGHTING</div>
 <div id="detonate">
-  DETONATION IN
-  <span id="detVal">12</span>s
+  BOMB SITE ARMED
   <br>
   DEFUSE <span id="defuseVal">0%</span>
 </div>
 <div id="msg"></div>
+<div id="killCamBanner"></div>
 <div id="controls">
-  WASD &middot; RIGHT-CLICK AIM &middot; SHIFT SPRINT &middot; C CROUCH &middot; CTRL CRAWL &middot; E ACTION &middot; Q ABILITY
+  WASD &middot; RIGHT-CLICK AIM &middot; SHIFT SPRINT &middot; C CROUCH &middot; CTRL CRAWL &middot; F ACTION &middot; G ABILITY &middot; Q/E TILT
 </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -1305,7 +1510,7 @@ const levelThemes=[
     wall:0x75694f,
     lamps:[0xffb060,0x60c0ff,0xc9d94a,0xff8060,0x80ffcf,0xffd060,0x80a0ff],
     layout:'compound',
-    site:{x:24,z:4,r:3},
+    sites:[{x:24,z:4,r:3},{x:-8,z:18,r:3}],
     spots:[
       {x:26,z:-8},
       {x:30,z:14},
@@ -1334,7 +1539,7 @@ const levelThemes=[
     wall:0x5a4c3c,
     lamps:[0xff6a3a,0xffaa40,0xff3a3a,0xffcf80,0xff8a5a],
     layout:'urban',
-    site:{x:-28,z:-24,r:3},
+    sites:[{x:-28,z:-24,r:3},{x:10,z:-2,r:3}],
     spots:[
       {x:-30,z:-30},
       {x:-24,z:-18},
@@ -1363,7 +1568,7 @@ const levelThemes=[
     wall:0x3a4652,
     lamps:[0x40c0ff,0x60ffe0,0x2090ff,0x80d0ff,0x40e0c0],
     layout:'industrial',
-    site:{x:0,z:26,r:3},
+    sites:[{x:0,z:26,r:3},{x:-18,z:-2,r:3}],
     spots:[
       {x:4,z:20},
       {x:-6,z:22},
@@ -1392,7 +1597,7 @@ const levelThemes=[
     wall:0x2a2035,
     lamps:[0x9a5aff,0x6a3aff,0xc080ff,0x8050ff,0xaa70ff],
     layout:'night',
-    site:{x:-4,z:-28,r:3},
+    sites:[{x:-4,z:-28,r:3},{x:14,z:-14,r:3}],
     spots:[
       {x:-10,z:-22},
       {x:2,z:-32},
@@ -1421,7 +1626,7 @@ const levelThemes=[
     wall:0x8aa0ac,
     lamps:[0x80e0ff,0xa0f0ff,0x60c0ff,0xc0f0ff,0x80d0ff],
     layout:'arctic',
-    site:{x:22,z:-24,r:3},
+    sites:[{x:22,z:-24,r:3},{x:-14,z:-18,r:3}],
     spots:[
       {x:24,z:-30},
       {x:18,z:-18},
@@ -1450,7 +1655,7 @@ const levelThemes=[
     wall:0x3a4a22,
     lamps:[0x80ff40,0xa0ff60,0x60e020,0xc0ff80,0x90ff50],
     layout:'toxic',
-    site:{x:-24,z:26,r:3},
+    sites:[{x:-24,z:26,r:3},{x:12,z:-10,r:3}],
     spots:[
       {x:-26,z:30},
       {x:-20,z:22},
@@ -1479,7 +1684,7 @@ const levelThemes=[
     wall:0xb89858,
     lamps:[0xffaa40,0xffcf80,0xff9030,0xffd090,0xffb050],
     layout:'desert',
-    site:{x:30,z:28,r:3},
+    sites:[{x:30,z:28,r:3},{x:6,z:-14,r:3}],
     spots:[
       {x:32,z:30},
       {x:26,z:24},
@@ -1508,7 +1713,7 @@ const levelThemes=[
     wall:0x3a1c14,
     lamps:[0xff4020,0xff6a30,0xff2010,0xffaa40,0xff5020],
     layout:'volcanic',
-    site:{x:-30,z:-28,r:3},
+    sites:[{x:-30,z:-28,r:3},{x:10,z:10,r:3}],
     spots:[
       {x:-32,z:-30},
       {x:-26,z:-22},
@@ -1634,10 +1839,20 @@ function buildNavWaypoints(){
       pts.push({x:w.x+w.w/2+1.4,z:w.z});
     }
   });
-  const theme=getLevel();
-  theme.spots.forEach(sp=>
-    pts.push({x:sp.x,z:sp.z})
-  );
+  /*
+    Seed a ring of extra graph nodes around whichever site
+    is active this round (site is resolved by
+    applySiteFromTheme() before this runs — see loadLevel())
+    instead of a theme-fixed spot list, since the active
+    site now changes round to round.
+  */
+  for(let i=0;i<5;i++){
+    const ang=(i/5)*Math.PI*2;
+    pts.push({
+      x:site.x+Math.cos(ang)*6,
+      z:site.z+Math.sin(ang)*6
+    });
+  }
   navWaypoints=
     pts.filter(p=>
       p.x>-39&&p.x<39&&
@@ -2346,26 +2561,69 @@ siteRing.position.set(
   24,.05,4
 );
 scene.add(siteRing);
+/*
+  A second, dimmer ring marks the map's OTHER potential
+  bomb site — every theme has two, and one is picked at
+  random each round (see applySiteFromTheme). Showing the
+  unused site as a dead marker sells the "which site is
+  it this time" read without hiding real information the
+  player needs.
+*/
+const otherSiteMat=
+  new THREE.MeshBasicMaterial({
+    color:0x9a9a88,
+    side:THREE.DoubleSide,
+    transparent:true,
+    opacity:.28
+  });
+const otherSiteRing=
+  new THREE.Mesh(
+    siteGeo,
+    otherSiteMat
+  );
+otherSiteRing.rotation.x=-Math.PI/2;
+otherSiteRing.visible=false;
+scene.add(otherSiteRing);
 let site={
   x:24,
   z:4,
   r:3
 };
+let activeSiteIndex=0;
 function applySiteFromTheme(theme){
+  activeSiteIndex=
+    Math.floor(
+      Math.random()*theme.sites.length
+    );
+  const chosen=
+    theme.sites[activeSiteIndex];
   site={
-    x:theme.site.x,
-    z:theme.site.z,
-    r:theme.site.r
+    x:chosen.x,
+    z:chosen.z,
+    r:chosen.r
   };
   siteRing.position.set(
     site.x,.05,site.z
   );
+  const other=
+    theme.sites.find(
+      (s,i)=>i!==activeSiteIndex
+    );
+  if(other){
+    otherSiteRing.position.set(
+      other.x,.05,other.z
+    );
+    otherSiteRing.visible=true;
+  }
+  else{
+    otherSiteRing.visible=false;
+  }
 }
 /* =========================================================
    BOMB
-   A literal bomb device that appears at the site once
-   the attacking side finishes planting. Blinks faster
-   as detonation approaches.
+   A literal bomb device, preplaced and already armed at
+   the active site from the moment the round starts —
+   attackers defuse it, defenders defend it.
 ========================================================= */
 const bombGroup=new THREE.Group();
 const bombCase=
@@ -2462,15 +2720,15 @@ const mapCameras=[0,1,2].map(()=>{
     );
   return c;
 });
-function placeMapCameras(theme){
+function placeMapCameras(siteObj){
   const angles=[.4,2.6,4.8];
   angles.forEach((ang,i)=>{
     const radius=11;
     let cx=
-      theme.site.x+
+      siteObj.x+
       Math.cos(ang)*radius;
     let cz=
-      theme.site.z+
+      siteObj.z+
       Math.sin(ang)*radius;
     cx=Math.max(-38,Math.min(38,cx));
     cz=Math.max(-38,Math.min(38,cz));
@@ -2478,13 +2736,13 @@ function placeMapCameras(theme){
       cx,2.6,cz
     );
     camPropGroups[i].lookAt(
-      theme.site.x,1.2,theme.site.z
+      siteObj.x,1.2,siteObj.z
     );
     mapCameras[i].position.set(
       cx,2.5,cz
     );
     mapCameras[i].lookAt(
-      theme.site.x,1,theme.site.z
+      siteObj.x,1,siteObj.z
     );
   });
 }
@@ -2494,6 +2752,11 @@ function updateCameraAspects(){
       window.innerWidth/window.innerHeight;
     c.updateProjectionMatrix();
   });
+  if(typeof killCamCam!=='undefined'){
+    killCamCam.aspect=
+      window.innerWidth/window.innerHeight;
+    killCamCam.updateProjectionMatrix();
+  }
 }
 /* =========================================================
    ENEMY OPERATOR MODEL
@@ -2546,7 +2809,7 @@ function buildOperator(
       });
   const legGeo=
     new THREE.CylinderGeometry(
-      .16,.14,1,8
+      .16,.14,1,16
     );
   const legL=
     new THREE.Mesh(
@@ -2584,7 +2847,7 @@ function buildOperator(
   );
   const armGeo=
     new THREE.CylinderGeometry(
-      .11,.1,.75,8
+      .11,.1,.75,16
     );
   const armL=
     new THREE.Mesh(
@@ -2606,7 +2869,7 @@ function buildOperator(
     new THREE.Mesh(
       isRobotic
       ? new THREE.BoxGeometry(.36,.34,.34)
-      : new THREE.SphereGeometry(.24,12,12),
+      : new THREE.SphereGeometry(.24,22,18),
       matSkin
     );
   head.position.set(
@@ -2617,7 +2880,7 @@ function buildOperator(
       isRobotic
       ? new THREE.BoxGeometry(.42,.1,.4)
       : new THREE.SphereGeometry(
-          .27,12,12,0,
+          .27,22,18,0,
           Math.PI*2,0,
           Math.PI*.62
         ),
@@ -2692,6 +2955,7 @@ function buildOperator(
 ========================================================= */
 let enemies=[];
 let allies=[];
+let defenderSpots=[];
 const ATTACK_PALETTE=[0x7a2a2a,0x2a1a1a];
 const DEFENSE_PALETTE=[0x24384a,0x18242e];
 function makeBot(pos,op,team,isBetter){
@@ -2700,10 +2964,20 @@ function makeBot(pos,op,team,isBetter){
     ?ATTACK_PALETTE
     :DEFENSE_PALETTE;
   const theme=getLevel();
+  /*
+    OPERATOR IDENTITY — body color stays purely team-based
+    (attack vs. defense) so friend/foe is always readable at
+    a glance, but the trim (plate/helmet/visor) now uses that
+    specific operator's own accent color from PLAYER_OPS
+    instead of a flat per-team shade, so each of the 6
+    operators has a distinct look on the battlefield for the
+    first time — Vanguard's lime, Phantom's cyan, Siege's
+    orange, and so on.
+  */
   const group=
     buildOperator(
       palette[0],
-      palette[1],
+      op.accent||palette[1],
       theme.enemyType
     );
   group.position.set(
@@ -2754,30 +3028,31 @@ function spawnMatch(){
   enemies=[];
   allies=[];
   const theme=getLevel();
-  const spots=theme.spots;
   const enemyTeam=
     player.team==='attack'
     ?'defense'
     :'attack';
   const allyTeam=player.team;
   /*
-    Spread the attacking spawn out into evenly-angled slots
-    around the staging point instead of one shared jitter
-    box — random jitter alone lets two bots roll positions
-    right on top of each other. Each slot also gets its own
-    small jitter so it doesn't look like a rigid formation.
+    Spread each side's spawn out into evenly-angled slots
+    around a staging point instead of one shared jitter box
+    — random jitter alone lets two bots roll positions right
+    on top of each other. Each slot also gets its own small
+    jitter so it doesn't look like a rigid formation. Shared
+    by both the outside attacker staging point and the
+    (round-to-round randomized) defender site — see
+    applySiteFromTheme().
   */
-  const atkAnchor=theme.atkSpawn;
-  const atkSpawnSlot=
-    (i,total)=>{
+  const spawnSlot=
+    (anchor,i,total,radius0,radiusSpread)=>{
       const ang=
         (i/total)*Math.PI*2+
         Math.random()*.4;
       const radius=
-        8+Math.random()*3.5;
+        radius0+Math.random()*radiusSpread;
       const p={
-        x:atkAnchor.x+Math.cos(ang)*radius,
-        z:atkAnchor.z+Math.sin(ang)*radius
+        x:anchor.x+Math.cos(ang)*radius,
+        z:anchor.z+Math.sin(ang)*radius
       };
       /*
         A slot can land inside (or right up against) a wall
@@ -2795,12 +3070,32 @@ function spawnMatch(){
       p.z=Math.max(-38,Math.min(38,p.z));
       return p;
     };
+  const atkAnchor=theme.atkSpawn;
+  const atkSpawnSlot=
+    (i,total)=>
+      spawnSlot(atkAnchor,i,total,8,3.5);
+  /*
+    Defender spots cluster around whichever site got picked
+    this round (site is resolved by applySiteFromTheme()
+    before spawnMatch() runs — see loadLevel()) rather than
+    a theme-fixed list, since the active site now changes
+    every round. Stored on defenderSpots so resetRound() can
+    hand the player the same slot 0 the bots are built
+    around here, keeping the human spawn consistent with the
+    AI ones.
+  */
+  defenderSpots=[];
+  for(let i=0;i<5;i++){
+    defenderSpots.push(
+      spawnSlot(site,i,5,4,3)
+    );
+  }
   for(let i=0;i<5;i++){
     const op=
       PLAYER_OPS[i%PLAYER_OPS.length];
     const pos=
       enemyTeam==='defense'
-      ?spots[i]
+      ?defenderSpots[i]
       :atkSpawnSlot(i,5);
     enemies.push(
       makeBot(pos,op,enemyTeam,true)
@@ -2811,7 +3106,7 @@ function spawnMatch(){
       PLAYER_OPS[(i+2)%PLAYER_OPS.length];
     const pos=
       allyTeam==='defense'
-      ?spots[i+1]
+      ?defenderSpots[i+1]
       :atkSpawnSlot(i,4);
     allies.push(
       makeBot(pos,op,allyTeam,false)
@@ -2837,7 +3132,7 @@ function loadLevel(idx){
   applySiteFromTheme(theme);
   clearDecorations();
   addDecorations();
-  placeMapCameras(theme);
+  placeMapCameras(site);
   buildNavWaypoints();
   spawnMatch();
 }
@@ -2881,6 +3176,7 @@ const player={
   recoilPitch:0,
   recoilYaw:0,
   recoilKick:0,
+  tilt:0,
   team:'attack'
 };
 camera.position.set(
@@ -3001,8 +3297,10 @@ const gameplayKeys=new Set([
   'control',
   'c',
   'e',
-  'r',
   'q',
+  'f',
+  'g',
+  'r',
   '1',
   '2',
   '3'
@@ -3023,17 +3321,13 @@ window.addEventListener(
     */
     e.preventDefault();
     keys[key]=true;
-    if(key==='q'){
+    if(key==='g'){
       triggerAbility();
     }
     if(
       (key==='1'||key==='2'||key==='3') &&
       player.team==='defense' &&
-      (
-        gameState==='playing' ||
-        gameState==='planting' ||
-        gameState==='planted'
-      )
+      gameState==='playing'
     ){
       const idx=parseInt(key,10)-1;
       viewingCamIndex=
@@ -3067,10 +3361,26 @@ window.addEventListener(
 ========================================================= */
 let round=1;
 let score=0;
+/*
+  MATCH FORMAT — best of 3: first to 2 round wins takes the
+  match. matchWins/matchLosses are both from the player's own
+  perspective (a "win" is a round outcome that favored the
+  player regardless of which side — attack or defense — they
+  were on that round), reset fresh on every deploy. Sides
+  swap automatically between rounds (see swapSides()) so a
+  full match sees the player on both attack and defense.
+*/
+let matchWins=0;
+let matchLosses=0;
+const ROUNDS_TO_WIN=2;
+function swapSides(){
+  player.team=
+    player.team==='attack'
+    ?'defense'
+    :'attack';
+}
 let roundTime=120;
 let gameState='menu';
-let plantProgress=0;
-let plantTimer=0;
 let defuseProgress=0;
 let msgTimeout=null;
 let grenades=[];
@@ -3101,6 +3411,8 @@ function updateHud(){
       )
     )*120+'px';
   document.getElementById('roundVal').textContent=round;
+  document.getElementById('matchScoreVal').textContent=
+    matchWins+'-'+matchLosses;
   document.getElementById('areaVal').textContent=getLevel().name;
   document.getElementById('timeVal').textContent=
     Math.max(0,Math.ceil(roundTime));
@@ -3388,7 +3700,7 @@ const barrel=
       .045,
       .045,
       .95,
-      12
+      18
     ),
     new THREE.MeshStandardMaterial({
       color:0x080909,
@@ -3545,7 +3857,7 @@ function updateWeaponModel(op){
     const scopeMesh=
       new THREE.Mesh(
         new THREE.CylinderGeometry(
-          .045,.045,.34,10
+          .045,.045,.34,16
         ),
         new THREE.MeshStandardMaterial({
           color:0x0a0a0a,
@@ -3586,7 +3898,7 @@ function updateWeaponModel(op){
     const coil=
       new THREE.Mesh(
         new THREE.CylinderGeometry(
-          .05,.05,.3,10
+          .05,.05,.3,16
         ),
         new THREE.MeshStandardMaterial({
           color:0x2a1a10,
@@ -3605,7 +3917,7 @@ function updateWeaponModel(op){
     const suppressor=
       new THREE.Mesh(
         new THREE.CylinderGeometry(
-          .05,.05,.42,10
+          .05,.05,.42,16
         ),
         new THREE.MeshStandardMaterial({
           color:0x1a1a1a,
@@ -3762,13 +4074,26 @@ function fireWeaponRay(origin,dir){
       !closestEnemy.dead
     ){
       closestEnemy.dead=true;
-      scene.remove(
-        closestEnemy.group
-      );
       score+=
         closestIsHead?150:100;
       if(closestIsHead){
         showMsg('HEADSHOT',700);
+      }
+      const camStarted=
+        startKillCam(
+          closestEnemy.group,
+          closestEnemy.x,
+          1.4,
+          closestEnemy.z,
+          closestIsHead,
+          currentOperator
+          ?currentOperator.weapon.name
+          :''
+        );
+      if(!camStarted){
+        scene.remove(
+          closestEnemy.group
+        );
       }
       checkEliminationWin();
     }
@@ -4350,7 +4675,22 @@ function runBotAI(bot,opponents,dt){
     bot.group.position.set(
       bot.x,0,bot.z
     );
-    bot.group.rotation.y=angTo;
+    /*
+      Smoothly turn toward the target facing instead of
+      snapping instantly — bots change target angle constantly
+      while steering/chasing/retreating, so an instant set
+      here reads as jerky, robotic spinning up close (very
+      visible now that the kill cam puts bots front-and-
+      center). Wrap the delta to [-PI,PI] first so it always
+      turns the short way around.
+    */
+    let angDiff=
+      angTo-bot.group.rotation.y;
+    angDiff=
+      ((angDiff+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-
+      Math.PI;
+    bot.group.rotation.y+=
+      angDiff*Math.min(1,dt*11);
     /*
       PROGRESS CHECK — raw per-frame displacement isn't a
       reliable stuck signal: a bot can oscillate along a
@@ -4446,14 +4786,24 @@ function runBotAI(bot,opponents,dt){
    ROUND OUTCOMES
 ========================================================= */
 function checkEliminationWin(){
-  if(
-    player.team==='defense' &&
-    gameState!=='planted' &&
-    enemies.length>0 &&
-    enemies.every(e=>e.dead)
-  ){
+  if(gameState!=='playing'||enemies.length===0)
+    return;
+  if(!enemies.every(e=>e.dead))
+    return;
+  /*
+    Wiping the enemy team is an instant round win for either
+    side — the defenders don't need the clock to run out and
+    the attackers don't need to finish defusing if there's no
+    one left alive to stop them.
+  */
+  if(player.team==='defense'){
     defenseWinsRound(
       'ALL ATTACKERS ELIMINATED — DEFENSE WINS'
+    );
+  }
+  else{
+    winRound(
+      'ALL DEFENDERS ELIMINATED — ATTACK WINS'
     );
   }
 }
@@ -4464,13 +4814,29 @@ function victory(){
   score+=500;
   mouseDown=false;
   showMsg(
-    'VICTORY — PRESS R FOR OPERATOR SELECT',
+    'MATCH WON '+matchWins+'-'+matchLosses+
+    ' — PRESS R FOR OPERATOR SELECT',
     999999
   );
 }
-function defenseWinsRound(
-  text='DEFENSE HOLDS — ROUND WON'
-){
+function matchLost(text){
+  gameState='gameover';
+  showMsg(
+    text+' — MATCH LOST '+matchWins+'-'+matchLosses+
+    ' — PRESS R FOR OPERATOR SELECT',
+    999999
+  );
+}
+/*
+  PLAYER WINS A ROUND — shared by both ways the player can
+  win one this round: defusing as attack (winRound) or
+  holding the site / running out the clock as defense
+  (defenseWinsRound). Tracks the best-of-3 match score and
+  either ends the whole match in victory() once the player
+  reaches ROUNDS_TO_WIN, or shows the round result and moves
+  on to the next round with sides swapped.
+*/
+function playerWinsRound(text){
   if(
     gameState==='gameover' ||
     gameState==='victory' ||
@@ -4479,6 +4845,7 @@ function defenseWinsRound(
     return;
   gameState='roundover';
   score+=500;
+  matchWins++;
   hideBomb();
   viewingCamIndex=-1;
   document
@@ -4487,35 +4854,76 @@ function defenseWinsRound(
   document
     .getElementById('cameraHud')
     .style.display='none';
-  showMsg(text,2400);
+  if(matchWins>=ROUNDS_TO_WIN){
+    showMsg(text,2400);
+    setTimeout(victory,2400);
+    return;
+  }
+  showMsg(
+    text+' ('+matchWins+'-'+matchLosses+')',
+    2400
+  );
   setTimeout(
     ()=>{
       round++;
       currentLevel++;
+      swapSides();
       resetRound();
     },
     2400
   );
 }
+function defenseWinsRound(
+  text='DEFENSE HOLDS — ROUND WON'
+){
+  playerWinsRound(text);
+}
+function winRound(
+  text='BOMB DEFUSED — ROUND WON'
+){
+  playerWinsRound(text);
+}
 /* =========================================================
-   LOSE
+   LOSE — the mirror of playerWinsRound() above: tracks the
+   match score and either ends the match in matchLost() once
+   the player reaches ROUNDS_TO_WIN losses, or shows the
+   round result and continues to the next round with sides
+   swapped, same as a round win does.
 ========================================================= */
 function loseRound(text){
   if(
     gameState==='gameover' ||
-    gameState==='victory'
+    gameState==='victory' ||
+    gameState==='roundover'
   )
     return;
-  gameState='gameover';
+  gameState='roundover';
+  matchLosses++;
   hideBomb();
   viewingCamIndex=-1;
   document
+    .getElementById('detonate')
+    .style.display='none';
+  document
     .getElementById('cameraHud')
     .style.display='none';
+  if(matchLosses>=ROUNDS_TO_WIN){
+    showMsg(text,2400);
+    setTimeout(()=>matchLost(text),2400);
+    return;
+  }
   showMsg(
-    text+
-    ' — PRESS R FOR OPERATOR SELECT',
-    999999
+    text+' ('+matchWins+'-'+matchLosses+')',
+    2400
+  );
+  setTimeout(
+    ()=>{
+      round++;
+      currentLevel++;
+      swapSides();
+      resetRound();
+    },
+    2400
   );
 }
 /* =========================================================
@@ -4829,8 +5237,19 @@ function explodeGrenade(pos){
         !en.dead
       ){
         en.dead=true;
-        scene.remove(en.group);
         score+=100;
+        const camStarted=
+          startKillCam(
+            en.group,
+            en.x,
+            1.4,
+            en.z,
+            false,
+            'FRAG CHARGE'
+          );
+        if(!camStarted){
+          scene.remove(en.group);
+        }
         checkEliminationWin();
       }
     }
@@ -5022,10 +5441,26 @@ function updateScanOutlines(){
    RESET ROUND
 ========================================================= */
 function resetRound(){
+  /*
+    If a kill cam was still mid-playback when the round
+    turned over (e.g. the last kill of the round was also
+    the trigger), cut it immediately — loadLevel() below
+    rebuilds the whole scene, which would otherwise leave it
+    holding a stale/removed victim group reference.
+  */
+  killCam.active=false;
+  document.getElementById('killCamBanner').style.opacity=0;
+  /*
+    Load (and re-randomize — see applySiteFromTheme) the
+    level FIRST, so site, defenderSpots and the theme's
+    atkSpawn below are all freshly resolved for this round
+    before the player gets placed.
+  */
+  loadLevel(currentLevel);
   const spawnTheme=getLevel();
   if(player.team==='defense'){
-    player.x=spawnTheme.spots[0].x;
-    player.z=spawnTheme.spots[0].z;
+    player.x=defenderSpots[0].x;
+    player.z=defenderSpots[0].z;
   }
   else{
     player.x=spawnTheme.atkSpawn.x;
@@ -5033,7 +5468,15 @@ function resetRound(){
   }
   viewingCamIndex=-1;
   defuseProgress=0;
-  hideBomb();
+  /*
+    BOMB — no plant phase anymore: it's preplaced and armed
+    at the (randomly chosen) site from the moment the round
+    starts. Attackers defuse it; defenders defend it.
+  */
+  showBomb();
+  document
+    .getElementById('detonate')
+    .style.display='block';
   player.hp=player.maxHp;
   player.ammo=player.maxAmmo;
   player.reloadCd=0;
@@ -5046,9 +5489,11 @@ function resetRound(){
   player.recoilPitch=0;
   player.recoilYaw=0;
   player.recoilKick=0;
+  player.tilt=0;
   aiming=false;
   camera.fov=BASE_FOV;
   camera.updateProjectionMatrix();
+  camera.rotation.z=0;
   for(const b of bulletTracers)
     scene.remove(b.mesh);
   bulletTracers=[];
@@ -5064,14 +5509,8 @@ function resetRound(){
   for(const g of grenades)
     scene.remove(g.mesh);
   grenades=[];
-  loadLevel(currentLevel);
   roundTime=120;
   gameState='playing';
-  plantProgress=0;
-  plantTimer=0;
-  document
-    .getElementById('detonate')
-    .style.display='none';
   document
     .getElementById('cloakOverlay')
     .style.opacity=0;
@@ -5103,7 +5542,102 @@ function resetRound(){
     .getElementById('spectateHud')
     .style.display='none';
   hasShownSpectateMsg=false;
+  showMsg(
+    player.team==='attack'
+    ?'DEFUSE THE BOMB'
+    :'DEFEND THE BOMB SITE',
+    2200
+  );
   updateHud();
+}
+/* =========================================================
+   KILL CAM — a short cinematic replay whenever the player
+   personally lands a kill (bullet or Frag Charge). It plays
+   from a dedicated orbiting camera and, by short-circuiting
+   update() entirely for its duration (see the early-return
+   below), fully freezes the simulation — bots, the round
+   timer, damage, everything — so nothing about normal
+   gameplay logic has to be touched or made cam-aware, and
+   the player can never be hurt while watching their own kill.
+   A cooldown keeps it from firing on every kill of a fast
+   multi-kill spray.
+*/
+const killCamCam=
+  new THREE.PerspectiveCamera(
+    50,
+    window.innerWidth/window.innerHeight,
+    .05,
+    400
+  );
+let killCamCooldownUntil=0;
+const killCam={
+  active:false,
+  timer:0,
+  duration:1.6,
+  targetPos:new THREE.Vector3(),
+  angle0:0,
+  radius:3.4,
+  height:1.75,
+  group:null
+};
+function startKillCam(
+  group,vx,vy,vz,headshot,weaponName
+){
+  const now=clock.getElapsedTime();
+  if(now<killCamCooldownUntil)
+    return false;
+  killCamCooldownUntil=
+    now+killCam.duration+2.5;
+  killCam.active=true;
+  killCam.timer=0;
+  killCam.targetPos.set(vx,vy,vz);
+  killCam.angle0=Math.random()*Math.PI*2;
+  killCam.group=group;
+  document
+    .getElementById('killCamBanner')
+    .innerHTML=
+      (headshot?'HEADSHOT ELIMINATION':'ELIMINATION')+
+      (
+        weaponName
+        ?'<div class="killCamSub">'+weaponName+'</div>'
+        :''
+      );
+  document
+    .getElementById('killCamBanner')
+    .style.opacity=1;
+  return true;
+}
+function updateKillCam(dt){
+  killCam.timer+=dt;
+  const t=
+    Math.min(1,killCam.timer/killCam.duration);
+  const ang=
+    killCam.angle0+t*1.7;
+  const cx=
+    killCam.targetPos.x+
+    Math.cos(ang)*killCam.radius;
+  const cz=
+    killCam.targetPos.z+
+    Math.sin(ang)*killCam.radius;
+  const cy=
+    killCam.targetPos.y+
+    killCam.height-t*.5;
+  killCamCam.position.set(cx,cy,cz);
+  killCamCam.lookAt(
+    killCam.targetPos.x,
+    killCam.targetPos.y+.3,
+    killCam.targetPos.z
+  );
+  if(killCam.timer>=killCam.duration){
+    killCam.active=false;
+    document
+      .getElementById('killCamBanner')
+      .style.opacity=0;
+    if(killCam.group){
+      scene.remove(killCam.group);
+      killCam.group=null;
+    }
+  }
 }
 /* =========================================================
    GAME UPDATE
@@ -5130,6 +5664,7 @@ function update(){
     gameState==='victory' ||
     gameState==='menu'
   ){
+    killCam.active=false;
     renderer.render(
       scene,
       activeCam
@@ -5137,20 +5672,26 @@ function update(){
     requestAnimationFrame(update);
     return;
   }
-  if(
-    gameState==='playing' ||
-    gameState==='planting'
-  ){
+  if(killCam.active){
+    updateKillCam(dt);
+    renderer.render(
+      scene,
+      killCamCam
+    );
+    requestAnimationFrame(update);
+    return;
+  }
+  if(gameState==='playing'){
     roundTime-=dt;
     if(roundTime<=0){
       if(player.team==='attack'){
         loseRound(
-          'TIME EXPIRED — DEFENSE WINS'
+          'TIME EXPIRED — BOMB SECURED, DEFENSE WINS'
         );
       }
       else{
         defenseWinsRound(
-          'TIME EXPIRED — DEFENSE HOLDS'
+          'TIME EXPIRED — BOMB SECURED, DEFENSE WINS'
         );
       }
     }
@@ -5341,6 +5882,19 @@ function update(){
     (0-player.recoilPitch)*Math.min(1,dt*9);
   player.recoilYaw+=
     (0-player.recoilYaw)*Math.min(1,dt*7);
+  /*
+    TILT/LEAN — Q tilts (rolls) the camera left, E tilts it
+    right, like peeking around a corner. Purely a camera-roll
+    effect (no positional peek offset), smoothly lerped in
+    both directions so it snaps in fast but eases back out.
+  */
+  const TILT_ANGLE=.19;
+  const tiltTarget=
+    inputActive&&player.hp>0
+    ?((keys['q']?1:0)-(keys['e']?1:0))*TILT_ANGLE
+    :0;
+  player.tilt+=
+    (tiltTarget-player.tilt)*Math.min(1,dt*10);
   camera.rotation.order='YXZ';
   camera.rotation.y=
     player.yaw+player.recoilYaw;
@@ -5352,6 +5906,7 @@ function update(){
         player.pitch+player.recoilPitch
       )
     );
+  camera.rotation.z=player.tilt;
   const forward=_moveForward;
   camera.getWorldDirection(
     forward
@@ -5450,7 +6005,7 @@ function update(){
      BREACH — a tactical tool available to either side
   ===================================================== */
   let breached=false;
-  if(keys['e']&&inputActive&&player.hp>0){
+  if(keys['f']&&inputActive&&player.hp>0){
     for(
       const w of walls
     ){
@@ -5500,14 +6055,14 @@ function update(){
   const playerInZone=
     distToSite<site.r+1.5;
   /* =====================================================
-     PLANT — the attacking side (player+allies, or the
-     enemy team if the player is defending) must hold
-     the bomb site to arm the bomb.
+     DEFUSE — the bomb is preplaced and already armed at
+     the site from the moment the round starts (see
+     resetRound()). Attackers (player+allies, or the enemy
+     team if the player is defending) must hold the site to
+     defuse it; defenders simply have to keep them off it —
+     there's no plant phase and nothing detonates.
   ===================================================== */
-  if(
-    gameState==='playing' ||
-    gameState==='planting'
-  ){
+  if(gameState==='playing'){
     const attackBots=
       player.team==='attack'
       ?allies:enemies;
@@ -5519,81 +6074,17 @@ function update(){
           b.z-site.z
         )<site.r+1.5
       );
-    const playerContrib=
+    const playerDefusing=
       player.team==='attack' &&
       inputActive &&
       player.hp>0 &&
       playerInZone &&
-      keys['e'] &&
+      keys['f'] &&
       !breached;
-    const anyAttackerInZone=
-      playerContrib ||
-      botAttackerInZone;
-    if(
-      gameState==='playing' &&
-      anyAttackerInZone
-    ){
-      gameState='planting';
-    }
-    if(gameState==='planting'){
-      if(anyAttackerInZone){
-        plantProgress+=dt;
-        if(plantProgress>=2.5){
-          gameState='planted';
-          plantTimer=30;
-          defuseProgress=0;
-          showBomb();
-          document
-            .getElementById('detonate')
-            .style.display='block';
-          showMsg(
-            'BOMB ARMED — DEFEND OR DEFUSE',
-            2200
-          );
-        }
-      }
-      else{
-        plantProgress=
-          Math.max(
-            0,
-            plantProgress-dt
-          );
-      }
-    }
-  }
-  /* =====================================================
-     DEFUSE + DETONATION — the defending side must hold
-     the planted bomb to disarm it before it goes off.
-  ===================================================== */
-  if(gameState==='planted'){
-    plantTimer-=dt;
-    document
-      .getElementById('detVal')
-      .textContent=
-      Math.ceil(
-        Math.max(0,plantTimer)
-      );
-    const defendBots=
-      player.team==='defense'
-      ?allies:enemies;
-    const botDefenderInZone=
-      defendBots.some(b=>
-        !b.dead &&
-        Math.hypot(
-          b.x-site.x,
-          b.z-site.z
-        )<site.r+1.5
-      );
-    const playerDefusing=
-      player.team==='defense' &&
-      inputActive &&
-      player.hp>0 &&
-      playerInZone &&
-      keys['e'];
-    const anyDefenderDefusing=
+    const anyAttackerDefusing=
       playerDefusing ||
-      botDefenderInZone;
-    if(anyDefenderDefusing){
+      botAttackerInZone;
+    if(anyAttackerDefusing){
       defuseProgress+=dt;
     }
     else{
@@ -5612,33 +6103,16 @@ function update(){
           defuseProgress/5*100
         )
       )+'%';
-    if(
-      gameState==='planted' &&
-      defuseProgress>=5
-    ){
-      hideBomb();
-      if(player.team==='defense'){
-        defenseWinsRound(
-          'BOMB DEFUSED — DEFENSE WINS'
-        );
-      }
-      else{
-        loseRound(
-          'BOMB DEFUSED — DEFENSE WINS'
-        );
-      }
-    }
-    else if(
-      gameState==='planted' &&
-      plantTimer<=0
-    ){
+    if(defuseProgress>=5){
       hideBomb();
       if(player.team==='attack'){
-        winRound();
+        winRound(
+          'BOMB DEFUSED — ATTACK WINS'
+        );
       }
       else{
         loseRound(
-          'BOMB DETONATED — ATTACK WINS'
+          'BOMB DEFUSED — ATTACK WINS'
         );
       }
     }
@@ -5787,11 +6261,7 @@ function update(){
   if(
     player.hp<=0 &&
     !hasShownSpectateMsg &&
-    (
-      gameState==='playing'||
-      gameState==='planting'||
-      gameState==='planted'
-    )
+    gameState==='playing'
   ){
     hasShownSpectateMsg=true;
     showMsg('ELIMINATED — SPECTATING',2200);
@@ -5803,11 +6273,7 @@ function update(){
   document.getElementById('spectateHud').style.display=
     (
       player.hp<=0 &&
-      (
-        gameState==='playing'||
-        gameState==='planting'||
-        gameState==='planted'
-      )
+      gameState==='playing'
     )?'block':'none';
   updateHud();
   renderer.render(
@@ -5819,29 +6285,6 @@ function update(){
 /* =========================================================
    ROUND WIN
 ========================================================= */
-function winRound(){
-  gameState='roundover';
-  score+=500;
-  viewingCamIndex=-1;
-  document
-    .getElementById('detonate')
-    .style.display='none';
-  document
-    .getElementById('cameraHud')
-    .style.display='none';
-  showMsg(
-    'CHARGE DETONATED — ROUND WON',
-    2400
-  );
-  setTimeout(
-    ()=>{
-      round++;
-      currentLevel++;
-      resetRound();
-    },
-    2400
-  );
-}
 /* =========================================================
    RESTART -> RETURN TO OPERATOR SELECT
    Only works while pointer lock is active.
@@ -6042,7 +6485,16 @@ const PLAYER_OPS=[
 ];
 let selectedOperatorIndex=0;
 function applyOperatorLoadout(op){
+  killCam.active=false;
+  document.getElementById('killCamBanner').style.opacity=0;
   currentOperator=op;
+  const skin=
+    OPERATOR_SKINS[selectedSkinIndex]||
+    OPERATOR_SKINS[0];
+  gunBody.material.color.setHex(skin.base);
+  upperReceiver.material.color.setHex(skin.panel);
+  handguard.material.color.setHex(skin.panel);
+  rail.material.color.setHex(skin.trim);
   player.maxHp=op.maxHp;
   player.hp=op.maxHp;
   player.speed=5.2*op.speedMul;
@@ -6062,10 +6514,12 @@ function applyOperatorLoadout(op){
   player.recoilPitch=0;
   player.recoilYaw=0;
   player.recoilKick=0;
+  player.tilt=0;
   player.aimFov=op.weapon.aimFov;
   aiming=false;
   camera.fov=BASE_FOV;
   camera.updateProjectionMatrix();
+  camera.rotation.z=0;
   updateWeaponModel(op);
 }
 function buildMenu(){
@@ -6084,7 +6538,7 @@ function buildMenu(){
       '<div class="role">'+op.role+'</div>'+
       '<div class="stat">WEAPON: '+op.weapon.name+'</div>'+
       '<div class="stat">HP: '+op.maxHp+' &middot; SPD: '+Math.round(op.speedMul*100)+'%</div>'+
-      '<div class="stat">ABILITY [Q]: '+op.ability.name+'</div>'+
+      '<div class="stat">ABILITY [G]: '+op.ability.name+'</div>'+
       '<div class="abilityDesc">'+op.ability.desc+'</div>';
     card.addEventListener('click',()=>{
       selectedOperatorIndex=i;
@@ -6112,6 +6566,56 @@ function buildMapMenu(){
       selectedMapIndex=i;
       document
         .querySelectorAll('.mapChip')
+        .forEach(c=>c.classList.remove('selected'));
+      chip.classList.add('selected');
+    });
+    grid.appendChild(chip);
+  });
+}
+/*
+  WEAPON SKINS — the player never sees their own operator's
+  body model in this FPS (no third-person mesh), so "operator
+  skin" is expressed as a paint job on the one thing they DO
+  see for the whole match: their own gun's furniture (body,
+  upper receiver, handguard, rail). Applied per-deploy in
+  applyOperatorLoadout(). Kept separate from each operator's
+  own signature accent color (now used for ally/enemy trim —
+  see makeBot()) so the two systems don't fight each other.
+*/
+const OPERATOR_SKINS=[
+  {id:'tactical',name:'TACTICAL',base:0x151719,panel:0x242628,trim:0x111313},
+  {id:'desert',name:'DESERT',base:0x9c8a63,panel:0x7d6d4c,trim:0x5f5238},
+  {id:'arctic',name:'ARCTIC',base:0xd8dde0,panel:0xb7bec2,trim:0x8a9094},
+  {id:'woodland',name:'WOODLAND',base:0x4a5a3a,panel:0x3a4630,trim:0x2a3322},
+  {id:'crimson',name:'CRIMSON',base:0x6e1f1f,panel:0x4a1414,trim:0x2a0c0c},
+  {id:'gold',name:'GOLD RUSH',base:0xc9a227,panel:0xa3831c,trim:0x6b5510}
+];
+let selectedSkinIndex=0;
+function buildSkinMenu(){
+  const grid=
+    document.getElementById('skinGrid');
+  grid.innerHTML='';
+  OPERATOR_SKINS.forEach((skin,i)=>{
+    const chip=
+      document.createElement('div');
+    chip.className=
+      'skinChip'+
+      (i===selectedSkinIndex?' selected':'');
+    const swatch=
+      document.createElement('div');
+    swatch.className='skinSwatch';
+    swatch.style.background=
+      '#'+skin.base.toString(16).padStart(6,'0');
+    const name=
+      document.createElement('div');
+    name.className='skinName';
+    name.textContent=skin.name;
+    chip.appendChild(swatch);
+    chip.appendChild(name);
+    chip.addEventListener('click',()=>{
+      selectedSkinIndex=i;
+      document
+        .querySelectorAll('.skinChip')
         .forEach(c=>c.classList.remove('selected'));
       chip.classList.add('selected');
     });
@@ -6157,6 +6661,8 @@ document
     applyOperatorLoadout(op);
     player.team=selectedSide;
     round=1;
+    matchWins=0;
+    matchLosses=0;
     currentLevel=selectedMapIndex;
     score=0;
     document
@@ -6169,6 +6675,7 @@ document
    START
 ========================================================= */
 buildMenu();
+buildSkinMenu();
 buildMapMenu();
 buildSideMenu();
 loadLevel(0);
