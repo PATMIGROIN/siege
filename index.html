@@ -97,50 +97,64 @@ canvas{
   (bolt placement distance) on its own root element so the
   shared .hRing/.bolt rules below just inherit the right size.
 
-  The rings are five actual stacked circular elements (each
-  a solid filled disc, largest painted first / smallest last
-  so it visually reads as concentric rings) rather than a
-  single box-shadow with growing spread — this sandbox's
-  software rasterizer does NOT apply border-radius to a
-  box-shadow's spread growth (confirmed: even a 20px spread
-  on a border-radius:50% source renders as a hard-cornered
-  square), so real sized circles are the only reliable way
-  to get true rings here. A plain transparent-to-opaque
-  radial-gradient has its own separate halo-artifact bug on
-  this rasterizer, so that's avoided too (see .scopeBlackout,
-  which sidesteps it with a hard, zero-width mask stop).
+  The rings are five actual circular elements (each a hollow
+  annulus drawn with a plain CSS border, not a filled disc)
+  rather than a single box-shadow with growing spread — this
+  sandbox's software rasterizer does NOT apply border-radius
+  to a box-shadow's spread growth (confirmed: even a 20px
+  spread on a border-radius:50% source renders as a
+  hard-cornered square), so real sized circles are the only
+  reliable way to get true rings here. A plain
+  transparent-to-opaque radial-gradient has its own separate
+  halo-artifact bug on this rasterizer, so that's avoided too
+  (see .scopeBlackout, which sidesteps it with a hard,
+  zero-width mask stop).
+
+  IMPORTANT: each ring's border sits between its own outer
+  and inner radius ONLY — none of them have a background
+  fill, and their inner edges are chained so ring 5's inner
+  edge lands exactly on --r. That leaves the whole aperture
+  (everything inside --r) completely unpainted, so the actual
+  3D view — and the reticle drawn on top of it — shows
+  through untouched. An earlier version used solid filled
+  discs stacked smallest-on-top, which visually produced the
+  same rings but left the innermost disc opaque all the way
+  to the center, blacking out the one thing a sight exists to
+  show you: what you're aiming at.
 */
 .hRing{
   position:absolute;
   top:50%;
   left:50%;
+  box-sizing:border-box;
   border-radius:50%;
+  background:transparent;
   transform:translate(-50%,-50%);
 }
 .hRing.r1{
   width:calc((var(--r) + 27px)*2);
   height:calc((var(--r) + 27px)*2);
-  background:#0c0a08;
+  border:5px solid #0c0a08;
 }
 .hRing.r2{
   width:calc((var(--r) + 22px)*2);
   height:calc((var(--r) + 22px)*2);
-  background:#26221d;
+  border:9px solid #26221d;
 }
 .hRing.r3{
   width:calc((var(--r) + 13px)*2);
   height:calc((var(--r) + 13px)*2);
-  background:#100e0b;
+  border:4px solid #100e0b;
 }
 .hRing.r4{
   width:calc((var(--r) + 9px)*2);
   height:calc((var(--r) + 9px)*2);
-  background:#2c2924;
+  border:7px solid #2c2924;
 }
 .hRing.r5{
   width:calc((var(--r) + 2px)*2);
   height:calc((var(--r) + 2px)*2);
-  background:#14120f;
+  border:2px solid #14120f;
 }
 /* Full-screen blackout — SCOPE ONLY (a true magnified optic
    tunnels your whole view down the tube). The reflex, holo
@@ -858,7 +872,7 @@ canvas{
       <b>WASD</b> MOVE &middot; <b>MOUSE</b> LOOK &middot; <b>CLICK</b> SHOOT &middot;
       <b>RIGHT-CLICK</b> AIM &middot; <b>F</b> BREACH/DEFUSE &middot; <b>G</b> OPERATOR ABILITY
       <br>
-      <b>SHIFT</b> SPRINT &middot; <b>C</b> CROUCH &middot; <b>CTRL</b> CRAWL &middot; <b>R</b> RELOAD &middot; <b>Q/E</b> TILT
+      <b>SHIFT</b> SPRINT &middot; <b>C</b> TOGGLE CROUCH &middot; <b>CTRL</b> TOGGLE CRAWL &middot; <b>R</b> RELOAD &middot; <b>Q/E</b> TOGGLE TILT
     </div>
     <button id="deployBtn">DEPLOY</button>
     <div id="hint">
@@ -998,7 +1012,7 @@ canvas{
 <div id="msg"></div>
 <div id="killCamBanner"></div>
 <div id="controls">
-  WASD &middot; RIGHT-CLICK AIM &middot; SHIFT SPRINT &middot; C CROUCH &middot; CTRL CRAWL &middot; F ACTION &middot; G ABILITY &middot; Q/E TILT
+  WASD &middot; RIGHT-CLICK AIM &middot; SHIFT SPRINT &middot; C TOGGLE CROUCH &middot; CTRL TOGGLE CRAWL &middot; F ACTION &middot; G ABILITY &middot; Q/E TOGGLE TILT
 </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -3246,6 +3260,19 @@ canvasEl.addEventListener(
 ========================================================= */
 let mouseDown=false;
 let aiming=false;
+/*
+  TOGGLE STATES — Q/E (tilt) and Ctrl/C (stance) are presses,
+  not holds: pressing one turns it on and it stays on by
+  itself; pressing the SAME key again turns it back off, and
+  pressing the OTHER key in the pair switches straight to it.
+  See the keydown handler below, which flips these on the
+  actual keydown edge (guarded by e.repeat so the browser's
+  own key-repeat firing doesn't rapidly toggle it back off).
+  tiltState: 0=neutral, 1=Q (tilt left), -1=E (tilt right).
+  stanceOverride: null=standing, 'crawl', or 'crouch'.
+*/
+let tiltState=0;
+let stanceOverride=null;
 document.addEventListener(
   'mousedown',
   e=>{
@@ -3323,6 +3350,30 @@ window.addEventListener(
     keys[key]=true;
     if(key==='g'){
       triggerAbility();
+    }
+    /*
+      TOGGLE KEYS — only act on the real keydown edge
+      (e.repeat is true for the browser's own auto-repeat
+      while a key stays physically held, which would
+      otherwise flip these on/off/on/off many times a second).
+    */
+    if(!e.repeat){
+      if(key==='q'){
+        tiltState=
+          tiltState===1?0:1;
+      }
+      else if(key==='e'){
+        tiltState=
+          tiltState===-1?0:-1;
+      }
+      else if(key==='control'){
+        stanceOverride=
+          stanceOverride==='crawl'?null:'crawl';
+      }
+      else if(key==='c'){
+        stanceOverride=
+          stanceOverride==='crouch'?null:'crouch';
+      }
     }
     if(
       (key==='1'||key==='2'||key==='3') &&
@@ -4930,12 +4981,16 @@ function loseRound(text){
    STANCE
 ========================================================= */
 function updateStance(){
-  if(keys['control']){
+  /*
+    Ctrl/C toggle a stance on/off (see stanceOverride in the
+    keydown handler) instead of requiring the key to be held.
+  */
+  if(stanceOverride==='crawl'){
     player.stance='crawl';
     player.height=player.crawlHeight;
     player.noise=.05;
   }
-  else if(keys['c']){
+  else if(stanceOverride==='crouch'){
     player.stance='crouched';
     player.height=player.crouchHeight;
     player.noise=.3;
@@ -5490,6 +5545,8 @@ function resetRound(){
   player.recoilYaw=0;
   player.recoilKick=0;
   player.tilt=0;
+  tiltState=0;
+  stanceOverride=null;
   aiming=false;
   camera.fov=BASE_FOV;
   camera.updateProjectionMatrix();
@@ -5884,14 +5941,17 @@ function update(){
     (0-player.recoilYaw)*Math.min(1,dt*7);
   /*
     TILT/LEAN — Q tilts (rolls) the camera left, E tilts it
-    right, like peeking around a corner. Purely a camera-roll
-    effect (no positional peek offset), smoothly lerped in
-    both directions so it snaps in fast but eases back out.
+    right, like peeking around a corner. A press toggles it
+    on/off (see tiltState in the keydown handler), not a
+    hold, so this just reads that persistent state rather
+    than the live key. Purely a camera-roll effect (no
+    positional peek offset), smoothly lerped in both
+    directions so it snaps in fast but eases back out.
   */
   const TILT_ANGLE=.19;
   const tiltTarget=
     inputActive&&player.hp>0
-    ?((keys['q']?1:0)-(keys['e']?1:0))*TILT_ANGLE
+    ?tiltState*TILT_ANGLE
     :0;
   player.tilt+=
     (tiltTarget-player.tilt)*Math.min(1,dt*10);
@@ -6515,6 +6575,8 @@ function applyOperatorLoadout(op){
   player.recoilYaw=0;
   player.recoilKick=0;
   player.tilt=0;
+  tiltState=0;
+  stanceOverride=null;
   player.aimFov=op.weapon.aimFov;
   aiming=false;
   camera.fov=BASE_FOV;
