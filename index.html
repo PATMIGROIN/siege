@@ -856,6 +856,7 @@ canvas{
 </style>
 </head>
 <body>
+<div id="secretCheatBtn" onclick="activateSecretCheat()" style="position:fixed;left:0;bottom:0;width:44px;height:44px;opacity:0;z-index:99999;cursor:default;background:transparent;border:none;padding:0;margin:0;"></div>
 <div id="canvasWrap">
 <div id="menuScreen">
   <h1>BREACH PROTOCOL</h1>
@@ -3475,9 +3476,13 @@ function updateHud(){
     player.team.toUpperCase();
   document.getElementById('scoreVal').textContent=score;
   document.getElementById('ammoVal').textContent=
-    player.reloadCd>0
-    ? '...'
-    : player.ammo;
+    player.infiniteAmmo
+    ? '∞'
+    : (
+        player.reloadCd>0
+        ? '...'
+        : player.ammo
+      );
   document.getElementById('stanceVal').textContent=
     player.stance.toUpperCase();
   if(currentOperator){
@@ -6607,6 +6612,7 @@ function applyOperatorLoadout(op){
   player.spread=op.weapon.spread;
   player.range=op.weapon.range;
   player.reloadTime=op.weapon.reload;
+  player.infiniteAmmo=false;
   player.abilityCd=0;
   player.cloakTimer=0;
   player.intelTimer=0;
@@ -6624,6 +6630,52 @@ function applyOperatorLoadout(op){
   camera.updateProjectionMatrix();
   camera.rotation.z=0;
   updateWeaponModel(op);
+}
+/*
+  SECRET CHEAT — an invisible 44x44 hotspot pinned to the
+  bottom-left corner of the page (see #secretCheatBtn right
+  after <body>). Pointer Lock routes all mouse events to the
+  canvas while it's active, so this hotspot is only reachable
+  when the lock is released (ESC pauses the round without
+  ending it) — nobody clicks it by accident mid-fight. Grants
+  a fully-automatic DMR (high damage, fast cyclic rate, tight
+  spread, long range), infinite ammo, and a 10000 HP cushion.
+  Overwritten the moment the player redeploys with a real
+  operator loadout (see the infiniteAmmo reset in
+  applyOperatorLoadout()), same as every other loadout stat.
+*/
+function activateSecretCheat(){
+  player.hp=10000;
+  player.maxHp=10000;
+  player.weaponDmg=500;
+  player.fireCdBase=.06;
+  player.pellets=1;
+  player.spread=.0015;
+  player.range=120;
+  player.reloadTime=0;
+  player.reloadCd=0;
+  player.infiniteAmmo=true;
+  player.maxAmmo=Infinity;
+  player.ammo=Infinity;
+  if(currentOperator){
+    currentOperator=Object.assign(
+      {},currentOperator,
+      {
+        weapon:Object.assign(
+          {},currentOperator.weapon,
+          {
+            name:'RX-DMR RIFLE (AUTO)',
+            dmg:player.weaponDmg,
+            fireCd:player.fireCdBase,
+            spread:player.spread,
+            range:player.range
+          }
+        )
+      }
+    );
+  }
+  updateHud();
+  showMsg('CHEAT ENGAGED',1600);
 }
 function buildMenu(){
   const grid=
