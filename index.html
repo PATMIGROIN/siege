@@ -3076,7 +3076,7 @@ function spawnMatch(){
         single pass can leave a point still embedded near a
         wall corner where two walls' pushes fight each other.
       */
-      for(let pass=0;pass<3;pass++){
+      for(let pass=0;pass<10;pass++){
         resolveWallCollisionXZ(p,.7);
         resolveDecorationCollision(p,.7);
       }
@@ -4125,26 +4125,13 @@ function fireWeaponRay(origin,dir){
       !closestEnemy.dead
     ){
       closestEnemy.dead=true;
+      scene.remove(
+        closestEnemy.group
+      );
       score+=
         closestIsHead?150:100;
       if(closestIsHead){
         showMsg('HEADSHOT',700);
-      }
-      const camStarted=
-        startKillCam(
-          closestEnemy.group,
-          closestEnemy.x,
-          1.4,
-          closestEnemy.z,
-          closestIsHead,
-          currentOperator
-          ?currentOperator.weapon.name
-          :''
-        );
-      if(!camStarted){
-        scene.remove(
-          closestEnemy.group
-        );
       }
       checkEliminationWin();
     }
@@ -4455,6 +4442,7 @@ function botFireAt(shooter,target){
     ?9999
     :shooter.weaponDmg;
   if(isPlayer){
+    const wasAlive=player.hp>0;
     player.hp-=dmg;
     document
       .getElementById('damageOverlay')
@@ -4467,6 +4455,14 @@ function botFireAt(shooter,target){
       },
       120
     );
+    if(wasAlive&&player.hp<=0){
+      startDeathCam(
+        shooter,
+        isHeadshot,
+        shooter.op?shooter.op.weapon.name:'',
+        shooter.op?shooter.op.name:''
+      );
+    }
   }
   else{
     target.hp-=dmg;
@@ -4590,6 +4586,29 @@ function pickNavTarget(bot,goalX,goalZ){
 function runBotAI(bot,opponents,dt){
   if(bot.dead||bot.hp<=0)
     return;
+  /*
+    STUCK-IN-GEOMETRY SAFETY NET — a bot's spawn slot is
+    pushed clear of walls/decorations once, up front (see
+    spawnSlot()). But a bot that never becomes alert (an
+    unengaged defender camping a site, say) skips the whole
+    movement branch below every frame, so if that one-time
+    push-out didn't fully converge — a tight pocket between
+    a wall and a nearby decoration can make a fixed number
+    of alternating passes fall just short — the bot would
+    otherwise sit however it spawned, visibly stuck partway
+    inside solid geometry, for the entire round. That reads
+    exactly like "phasing through a wall" from outside even
+    though the bot never actually moved. Re-resolve every
+    living bot's position against walls/decorations every
+    frame regardless of whether it's about to move, so any
+    residual overlap self-corrects within a frame or two.
+  */
+  const selfPos={x:bot.x,z:bot.z};
+  resolveWallCollisionXZ(selfPos,bot.r);
+  resolveDecorationCollision(selfPos,bot.r);
+  bot.x=selfPos.x;
+  bot.z=selfPos.z;
+  bot.group.position.set(bot.x,0,bot.z);
   const found=
     findNearestVisibleTarget(
       bot,opponents
@@ -5292,19 +5311,8 @@ function explodeGrenade(pos){
         !en.dead
       ){
         en.dead=true;
+        scene.remove(en.group);
         score+=100;
-        const camStarted=
-          startKillCam(
-            en.group,
-            en.x,
-            1.4,
-            en.z,
-            false,
-            'FRAG CHARGE'
-          );
-        if(!camStarted){
-          scene.remove(en.group);
-        }
         checkEliminationWin();
       }
     }
@@ -5497,13 +5505,13 @@ function updateScanOutlines(){
 ========================================================= */
 function resetRound(){
   /*
-    If a kill cam was still mid-playback when the round
-    turned over (e.g. the last kill of the round was also
-    the trigger), cut it immediately — loadLevel() below
+    If the death cam was still mid-playback when the round
+    turned over, cut it immediately — loadLevel() below
     rebuilds the whole scene, which would otherwise leave it
-    holding a stale/removed victim group reference.
+    holding a stale killer-bot reference.
   */
   killCam.active=false;
+  killCam.killer=null;
   document.getElementById('killCamBanner').style.opacity=0;
   /*
     Load (and re-randomize — see applySiteFromTheme) the
@@ -5520,6 +5528,18 @@ function resetRound(){
   else{
     player.x=spawnTheme.atkSpawn.x;
     player.z=spawnTheme.atkSpawn.z;
+  }
+  /*
+    defenderSpots is already pushed clear of walls/decorations
+    (see spawnSlot()), but atkSpawn is a fixed per-map constant
+    that's never been run through that push-out — nudge either
+    one clear here too so the player can never spawn embedded
+    in geometry (same "stuck in a wall" bug as bots, just for
+    the human-controlled side).
+  */
+  for(let pass=0;pass<10;pass++){
+    resolveWallCollisionXZ(player,player.r);
+    resolveDecorationCollision(player,player.r);
   }
   viewingCamIndex=-1;
   defuseProgress=0;
@@ -5599,6 +5619,7 @@ function resetRound(){
     .getElementById('spectateHud')
     .style.display='none';
   hasShownSpectateMsg=false;
+  deathCamShown=false;
   showMsg(
     player.team==='attack'
     ?'DEFUSE THE BOMB'
@@ -5608,16 +5629,19 @@ function resetRound(){
   updateHud();
 }
 /* =========================================================
-   KILL CAM — a short cinematic replay whenever the player
-   personally lands a kill (bullet or Frag Charge). It plays
-   from a dedicated orbiting camera and, by short-circuiting
-   update() entirely for its duration (see the early-return
-   below), fully freezes the simulation — bots, the round
-   timer, damage, everything — so nothing about normal
-   gameplay logic has to be touched or made cam-aware, and
-   the player can never be hurt while watching their own kill.
-   A cooldown keeps it from firing on every kill of a fast
-   multi-kill spray.
+   KILL CAM — actually a DEATH cam: a short cinematic replay
+   that plays when the PLAYER dies, orbiting the bot that got
+   the kill so you can see who ended you. It plays from a
+   dedicated camera and, by short-circuiting update() entirely
+   for its duration (see the early-return below), fully
+   freezes the simulation — bots, the round timer,
+   everything — while it plays. Fires at most once per round
+   (guarded by deathCamShown, reset alongside
+   hasShownSpectateMsg in resetRound()) since the player can
+   only die once before dropping into spectate. Unlike a
+   "you got a kill" cam, the subject here is a bot that's
+   still alive, so nothing ever gets removed from the scene
+   when it ends.
 */
 const killCamCam=
   new THREE.PerspectiveCamera(
@@ -5626,7 +5650,7 @@ const killCamCam=
     .05,
     400
   );
-let killCamCooldownUntil=0;
+let deathCamShown=false;
 const killCam={
   active:false,
   timer:0,
@@ -5635,28 +5659,32 @@ const killCam={
   angle0:0,
   radius:3.4,
   height:1.75,
-  group:null
+  killer:null
 };
-function startKillCam(
-  group,vx,vy,vz,headshot,weaponName
+function startDeathCam(
+  killer,headshot,weaponName,opName
 ){
-  const now=clock.getElapsedTime();
-  if(now<killCamCooldownUntil)
+  if(deathCamShown)
     return false;
-  killCamCooldownUntil=
-    now+killCam.duration+2.5;
+  deathCamShown=true;
   killCam.active=true;
   killCam.timer=0;
-  killCam.targetPos.set(vx,vy,vz);
+  killCam.targetPos.set(
+    killer.x,1.4,killer.z
+  );
   killCam.angle0=Math.random()*Math.PI*2;
-  killCam.group=group;
+  killCam.killer=killer;
+  const sub=
+    [opName,weaponName]
+      .filter(Boolean)
+      .join(' — ');
   document
     .getElementById('killCamBanner')
     .innerHTML=
-      (headshot?'HEADSHOT ELIMINATION':'ELIMINATION')+
+      (headshot?'HEADSHOT — ELIMINATED':'ELIMINATED')+
       (
-        weaponName
-        ?'<div class="killCamSub">'+weaponName+'</div>'
+        sub
+        ?'<div class="killCamSub">'+sub+'</div>'
         :''
       );
   document
@@ -5665,6 +5693,20 @@ function startKillCam(
   return true;
 }
 function updateKillCam(dt){
+  /*
+    Bot AI is frozen for the cam's whole duration (see the
+    early-return in update() below), so the killer's position
+    won't actually change frame to frame here — this re-read
+    is just cheap defense in case that ever stops being true,
+    and guards against the killer object having been cleared
+    out from under us (e.g. a round transition cutting the
+    cam short — see the defensive reset in resetRound()).
+  */
+  if(killCam.killer&&!killCam.killer.dead){
+    killCam.targetPos.set(
+      killCam.killer.x,1.4,killCam.killer.z
+    );
+  }
   killCam.timer+=dt;
   const t=
     Math.min(1,killCam.timer/killCam.duration);
@@ -5687,13 +5729,10 @@ function updateKillCam(dt){
   );
   if(killCam.timer>=killCam.duration){
     killCam.active=false;
+    killCam.killer=null;
     document
       .getElementById('killCamBanner')
       .style.opacity=0;
-    if(killCam.group){
-      scene.remove(killCam.group);
-      killCam.group=null;
-    }
   }
 }
 /* =========================================================
@@ -6546,6 +6585,8 @@ const PLAYER_OPS=[
 let selectedOperatorIndex=0;
 function applyOperatorLoadout(op){
   killCam.active=false;
+  killCam.killer=null;
+  deathCamShown=false;
   document.getElementById('killCamBanner').style.opacity=0;
   currentOperator=op;
   const skin=
