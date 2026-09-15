@@ -857,9 +857,43 @@ canvas{
 </head>
 <body>
 <div id="secretCheatBtn" onclick="activateSecretCheat()" style="position:fixed;left:0;bottom:0;width:44px;height:44px;opacity:0;z-index:99999;cursor:default;background:transparent;border:none;padding:0;margin:0;"></div>
+<button id="bossKeyBtn" onclick="toggleBossKey()" title="Instantly hide the game (F9)" style="position:fixed;top:8px;right:8px;z-index:99998;font:11px system-ui,sans-serif;background:rgba(20,22,20,.55);color:#9aa89a;border:1px solid rgba(255,255,255,.15);border-radius:4px;padding:4px 8px;cursor:pointer;letter-spacing:.03em;">&#128193; BOSS KEY (F9)</button>
+<div id="bossKeyOverlay" onclick="toggleBossKey()" style="display:none;position:fixed;inset:0;background:#e9ebee;z-index:200000;font-family:Calibri,'Segoe UI',Arial,sans-serif;color:#1a1a1a;">
+  <div style="background:linear-gradient(#fbfbfc,#eceef1);border-bottom:1px solid #c7cbd1;padding:7px 12px;font-size:13px;display:flex;justify-content:space-between;">
+    <span>Quarterly_Budget_Review_FINAL_v3.xlsx &mdash; Saved</span>
+    <span style="color:#5a6472;">AutoSave &#9679; ON</span>
+  </div>
+  <div style="background:#f6f7f8;border-bottom:1px solid #d7dbe0;padding:5px 12px;font-size:12px;color:#444;">
+    File &nbsp; Home &nbsp; Insert &nbsp; Page Layout &nbsp; Formulas &nbsp; Data &nbsp; Review &nbsp; View
+  </div>
+  <div id="bossKeyGrid" style="overflow:hidden;"></div>
+</div>
+<div id="shopOverlay" style="display:none;position:fixed;inset:0;background:rgba(6,8,6,.86);z-index:150000;font-family:inherit;">
+  <div style="max-width:820px;margin:5vh auto;background:#11150f;border:1px solid #2a3524;border-radius:10px;padding:24px 28px 30px;max-height:88vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <h2 style="margin:0;color:#c9d94a;letter-spacing:.05em;font-size:20px;">FINISHER SHOP</h2>
+      <button id="shopCloseBtn" style="background:none;border:1px solid #3a4a38;color:#9aa89a;border-radius:4px;padding:5px 12px;cursor:pointer;font:600 12px system-ui,sans-serif;">CLOSE</button>
+    </div>
+    <p style="color:#8a9a86;font-size:12px;margin:2px 0 18px;">
+      Spend tokens earned from kills and round/match wins on a finisher — a kill-confirm flourish that plays whenever you get the elimination. Only one can be equipped at a time.
+    </p>
+    <div style="color:#ffd54a;font:600 13px system-ui,sans-serif;margin-bottom:14px;">
+      &#9733; BALANCE: <span id="shopTokenVal">0</span> TOKENS
+    </div>
+    <div id="shopGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;"></div>
+  </div>
+</div>
 <div id="canvasWrap">
 <div id="menuScreen">
   <h1>BREACH PROTOCOL</h1>
+  <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin:-6px 0 14px;">
+    <div style="font:600 13px system-ui,sans-serif;color:#ffd54a;letter-spacing:.04em;">
+      &#9733; TOKENS <span id="menuTokenVal">0</span>
+    </div>
+    <button id="shopOpenBtn" style="font:600 12px system-ui,sans-serif;background:#1c2420;color:#c9d94a;border:1px solid #3a4a38;border-radius:4px;padding:5px 12px;cursor:pointer;letter-spacing:.04em;">
+      &#128722; SHOP
+    </button>
+  </div>
   <p class="menuSub">SELECT YOUR OPERATOR</p>
   <div id="operatorGrid"></div>
   <p class="menuSub" style="margin-top:22px;">SELECT WEAPON SKIN</p>
@@ -987,7 +1021,11 @@ canvas{
   <div>
     SCORE <span id="scoreVal">0</span>
   </div>
+  <div>
+    TOKENS <span id="tokenVal">0</span>
+  </div>
 </div>
+<div id="finisherFlash" style="position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .12s linear;z-index:400;"></div>
 <div id="ammoHud">
   AMMO <span id="ammoVal">30</span>/30
   <span id="weaponVal">AR-15 CARBINE</span>
@@ -2370,6 +2408,92 @@ function addPipeStack(x,z,rotY=0){
   }
   addCollider(x,z,1.4,1.4);
 }
+function addFoliageBush(x,z,scale=1){
+  const mat=
+    new THREE.MeshStandardMaterial({
+      color:0x3a5a2a,roughness:.95
+    });
+  const clump=new THREE.Group();
+  for(let i=0;i<3;i++){
+    const lobe=
+      new THREE.Mesh(
+        new THREE.IcosahedronGeometry(.42*scale,0),
+        mat
+      );
+    lobe.position.set(
+      (Math.random()-.5)*.5*scale,
+      .32*scale+Math.random()*.12*scale,
+      (Math.random()-.5)*.5*scale
+    );
+    lobe.rotation.y=Math.random()*Math.PI;
+    clump.add(lobe);
+  }
+  clump.position.set(x,0,z);
+  clump.traverse(m=>{
+    if(m.isMesh){
+      m.castShadow=true;
+      m.receiveShadow=true;
+    }
+  });
+  scene.add(clump);
+  trackMesh(clump);
+  addCollider(x,z,.7*scale,.7*scale);
+}
+function addVentUnit(x,z,rotY=0){
+  const body=
+    new THREE.Mesh(
+      new THREE.BoxGeometry(1.1,.7,.7),
+      new THREE.MeshStandardMaterial({
+        color:0x4a5058,roughness:.6,metalness:.4
+      })
+    );
+  body.position.set(x,.35,z);
+  body.rotation.y=rotY;
+  body.castShadow=true;
+  body.receiveShadow=true;
+  scene.add(body);
+  trackMesh(body);
+  const fan=
+    new THREE.Mesh(
+      new THREE.CylinderGeometry(.24,.24,.06,14),
+      new THREE.MeshStandardMaterial({
+        color:0x1c1e20,roughness:.5,metalness:.5
+      })
+    );
+  fan.rotation.x=Math.PI/2;
+  fan.position.set(
+    x+Math.sin(rotY)*.36,
+    .35,
+    z+Math.cos(rotY)*.36
+  );
+  fan.rotation.y=rotY;
+  scene.add(fan);
+  trackMesh(fan);
+  addCollider(x,z,1.1,.7);
+}
+function addTrafficCone(x,z){
+  const cone=
+    new THREE.Mesh(
+      new THREE.ConeGeometry(.22,.55,10),
+      new THREE.MeshStandardMaterial({
+        color:0xd9581a,roughness:.7
+      })
+    );
+  cone.position.set(x,.275,z);
+  cone.castShadow=true;
+  scene.add(cone);
+  trackMesh(cone);
+  const band=
+    new THREE.Mesh(
+      new THREE.CylinderGeometry(.16,.18,.08,10),
+      new THREE.MeshStandardMaterial({
+        color:0xeaeaea,roughness:.6
+      })
+    );
+  band.position.set(x,.32,z);
+  scene.add(band);
+  trackMesh(band);
+}
 function addNeonSign(x,z,rotY=0,color=0xff3a8a){
   const mesh=new THREE.Mesh(
     new THREE.PlaneGeometry(1.8,.6),
@@ -2429,6 +2553,14 @@ function addDecorGreenzone(){
   addStreetLampPole(24,4);
   addStreetLampPole(-20,-16);
   addStreetLampPole(2,-20);
+  addFoliageBush(-16,-4,1.1);
+  addFoliageBush(12,12,.9);
+  addFoliageBush(-27,13,1.2);
+  addFoliageBush(33,22,.9);
+  addFoliageBush(19,-4,1);
+  addFoliageBush(-3,-17,1.1);
+  addCrate(-9,4,.8,.7,0x3a4a2a);
+  addBarrel(24,-27,0x3a4a2a);
 }
 function addDecorUrban(){
   addCrate(-30,-4,1.1,.4,0x5a4c3c);
@@ -2448,6 +2580,13 @@ function addDecorUrban(){
   addNeonSign(-20,-8,Math.PI/2,0xff3a6a);
   addNeonSign(12,14,0,0x3ad0ff);
   addNeonSign(-34,-30,Math.PI/2,0xffaa30);
+  addTrafficCone(-27,-6);
+  addTrafficCone(-26.4,-5.4);
+  addTrafficCone(15,-2);
+  addVentUnit(-12,-2,Math.PI/2);
+  addVentUnit(22,22,0);
+  addCrate(-2,20,1,.5,0x5a4c3c);
+  addBarrel(2,22,0x4a3a2a);
 }
 function addDecorIndustrial(){
   addShippingContainer(-20,-20,0,0x3a5a6a);
@@ -2463,6 +2602,12 @@ function addDecorIndustrial(){
   addCrate(-6,18,.9,.2,0x2a3038);
   addStreetLampPole(10,-6);
   addStreetLampPole(-14,22);
+  addVentUnit(-20,-8,0);
+  addVentUnit(14,10,Math.PI/2);
+  addTrafficCone(0,10);
+  addTrafficCone(.6,10.5);
+  addTrafficCone(-22,16);
+  addPipeStack(10,16,Math.PI/2);
 }
 function addDecorNightOps(){
   addCrate(-18,-4,1,.3,0x2a2035);
@@ -2477,6 +2622,11 @@ function addDecorNightOps(){
   addNeonSign(-4,-8,0,0x9a5aff);
   addNeonSign(8,-28,Math.PI/2,0xff3a8a);
   addNeonSign(-22,-10,Math.PI/2,0x5aeaff);
+  addVentUnit(-10,-18,0);
+  addTrafficCone(10,-10);
+  addTrafficCone(10.6,-9.4);
+  addCrate(-2,-24,.9,.6,0x2a2035);
+  addBarrel(-22,-4,0x2a1a3a);
 }
 function addDecorArctic(){
   addIceChunk(10,0,1.3);
@@ -2493,6 +2643,11 @@ function addDecorArctic(){
   addBarrel(24,-14,0x2a5a80);
   addStreetLampPole(2,4);
   addStreetLampPole(-12,-20);
+  addIceChunk(-24,-2,.9);
+  addIceChunk(4,18,1);
+  addSnowDrift(-16,-14,1.3);
+  addSnowDrift(12,10,1.1);
+  addCrate(22,10,.9,.3,0xc8d8dc);
 }
 function addDecorToxic(){
   addToxicBarrel(-6,-6);
@@ -2508,6 +2663,10 @@ function addDecorToxic(){
   addSandbagRow(-8,20,0,3);
   addStreetLampPole(2,-16);
   addStreetLampPole(-18,-8);
+  addToxicPuddle(-10,-14,1.1);
+  addToxicBarrel(18,14);
+  addFoliageBush(-20,10,.9);
+  addFoliageBush(14,-20,1);
 }
 function addDecorDesert(){
   addCactus(-8,-8,1.2);
@@ -2522,6 +2681,10 @@ function addDecorDesert(){
   addCrate(-14,-20,.9,.2,0xc8a868);
   addBarrel(16,-4,0x8a6a30);
   addStreetLampPole(-6,16);
+  addCactus(-30,-14,1);
+  addCactus(22,14,.8);
+  addDuneRock(2,4,.9);
+  addDuneRock(-18,-24,1);
 }
 function addDecorVolcanic(){
   addLavaRock(-4,0,1.3);
@@ -2535,6 +2698,9 @@ function addDecorVolcanic(){
   addCrate(8,10,.9,.7,0x2a1410);
   addBarrel(-8,16,0x4a2a1a);
   addBarrel(16,-8,0x4a2a1a);
+  addLavaRock(-22,-16,1);
+  addLavaRock(18,18,.8);
+  addLavaVent(6,-6,.9);
 }
 const decorByLayout={
   compound:addDecorGreenzone,
@@ -2822,24 +2988,70 @@ function buildOperator(
         transparent:isGhost,
         opacity:isGhost?.55:1
       });
-  const legGeo=
-    new THREE.CylinderGeometry(
-      .16,.14,1,16
-    );
-  const legL=
+  /*
+    LIMBS — each leg/arm is a small Group pivoting at the
+    hip/shoulder joint rather than one tapered cylinder, so
+    a thigh+knee+shin+boot (or shoulder+upper arm+elbow+
+    forearm+hand) reads as an actual jointed limb instead of
+    a single robotic pole. legL/legR stay exposed on
+    userData exactly as before — runBotAI's walk-bob still
+    just rotates the whole group from the hip, which now
+    swings a fully-assembled leg instead of a lone cylinder.
+  */
+  const matBoot=
+    new THREE.MeshStandardMaterial({
+      color:isRobotic?accentColor:0x1c1a16,
+      roughness:.8,
+      metalness:isRobotic?.6:.05,
+      emissive:isRobotic?new THREE.Color(accentColor):0x000000,
+      emissiveIntensity:isRobotic?.4:0
+    });
+  const neck=
     new THREE.Mesh(
-      legGeo,matBody
+      new THREE.CylinderGeometry(
+        .09,.1,.14,10
+      ),
+      matSkin
     );
-  legL.position.set(
-    -.18,.5,0
+  neck.position.set(
+    0,1.77,0
   );
-  const legR=
-    new THREE.Mesh(
-      legGeo,matBody
-    );
-  legR.position.set(
-    .18,.5,0
-  );
+  function buildLeg(side){
+    const leg=new THREE.Group();
+    leg.position.set(side*.18,1,0);
+    const thigh=
+      new THREE.Mesh(
+        new THREE.CylinderGeometry(.155,.14,.5,14),
+        matBody
+      );
+    thigh.position.set(0,-.25,0);
+    leg.add(thigh);
+    const knee=
+      new THREE.Mesh(
+        new THREE.SphereGeometry(.1,10,8),
+        matBody
+      );
+    knee.position.set(0,-.5,0);
+    leg.add(knee);
+    const shin=
+      new THREE.Mesh(
+        new THREE.CylinderGeometry(.12,.09,.48,12),
+        matBody
+      );
+    shin.position.set(0,-.75,.015);
+    shin.rotation.x=.09;
+    leg.add(shin);
+    const boot=
+      new THREE.Mesh(
+        new THREE.BoxGeometry(.16,.11,.28),
+        matBoot
+      );
+    boot.position.set(0,-.995,.08);
+    leg.add(boot);
+    return leg;
+  }
+  const legL=buildLeg(-1);
+  const legR=buildLeg(1);
   const torso=
     new THREE.Mesh(
       new THREE.BoxGeometry(
@@ -2860,26 +3072,51 @@ function buildOperator(
   plate.position.set(
     0,1.5,.2
   );
-  const armGeo=
-    new THREE.CylinderGeometry(
-      .11,.1,.75,16
-    );
-  const armL=
+  const belt=
     new THREE.Mesh(
-      armGeo,matBody
+      new THREE.BoxGeometry(.56,.12,.4),
+      matAccent
     );
-  armL.position.set(
-    -.42,1.32,0
+  belt.position.set(
+    0,1.03,0
   );
-  armL.rotation.z=.15;
-  const armR=
-    new THREE.Mesh(
-      armGeo,matBody
-    );
-  armR.position.set(
-    .42,1.32,0
-  );
-  armR.rotation.z=-.15;
+  function buildArm(side){
+    const arm=new THREE.Group();
+    arm.position.set(side*.42,1.66,0);
+    arm.rotation.z=side*.16;
+    const shoulder=
+      new THREE.Mesh(
+        new THREE.SphereGeometry(.14,12,10),
+        matAccent
+      );
+    arm.add(shoulder);
+    const upperArm=
+      new THREE.Mesh(
+        new THREE.CylinderGeometry(.105,.095,.36,14),
+        matBody
+      );
+    upperArm.position.set(0,-.19,0);
+    arm.add(upperArm);
+    const foreArm=
+      new THREE.Mesh(
+        new THREE.CylinderGeometry(.085,.07,.34,12),
+        matBody
+      );
+    foreArm.position.set(0,-.4,.05);
+    foreArm.rotation.x=.32;
+    arm.add(foreArm);
+    const hand=
+      new THREE.Mesh(
+        new THREE.SphereGeometry(.075,10,8),
+        matSkin
+      );
+    hand.position.set(0,-.58,.16);
+    arm.add(hand);
+    return arm;
+  }
+  const armL=buildArm(-1);
+  const armR=buildArm(1);
+  const NECK_H=.14;
   const head=
     new THREE.Mesh(
       isRobotic
@@ -2888,7 +3125,7 @@ function buildOperator(
       matSkin
     );
   head.position.set(
-    0,1.95,0
+    0,1.95+NECK_H,0
   );
   const helmet=
     new THREE.Mesh(
@@ -2903,7 +3140,7 @@ function buildOperator(
     );
   helmet.position.set(
     0,
-    isRobotic?2.14:2.03,
+    (isRobotic?2.14:2.03)+NECK_H,
     0
   );
   const visor=
@@ -2916,7 +3153,7 @@ function buildOperator(
       })
     );
   visor.position.set(
-    0,1.98,.22
+    0,1.98+NECK_H,.22
   );
   const enemyGun=
     new THREE.Mesh(
@@ -2929,15 +3166,18 @@ function buildOperator(
       })
     );
   enemyGun.position.set(
-    .42,1.28,.35
+    .4,1.1,.42
   );
+  enemyGun.rotation.x=-.05;
   group.add(
     legL,
     legR,
     torso,
     plate,
+    belt,
     armL,
     armR,
+    neck,
     head,
     helmet,
     visor,
@@ -3223,6 +3463,7 @@ document
         }
         mouseDown=false;
         aiming=false;
+        setLaserSoundLevel(0);
       }
     }
   );
@@ -3990,6 +4231,317 @@ function updateWeaponModel(op){
   }
 }
 /* =========================================================
+   AUDIO
+   Every sound here is synthesized live with the Web Audio
+   API — no external sound files — so the game stays one
+   self-contained HTML file. Browsers block audio until a
+   real user gesture; the first pointerdown anywhere creates
+   and resumes the shared AudioContext.
+========================================================= */
+let audioCtx=null;
+let masterGain=null;
+let sfxGain=null;
+let musicGain=null;
+function ensureAudio(){
+  if(audioCtx)
+    return;
+  const Ctx=window.AudioContext||window.webkitAudioContext;
+  if(!Ctx)
+    return;
+  audioCtx=new Ctx();
+  masterGain=audioCtx.createGain();
+  masterGain.gain.value=.9;
+  masterGain.connect(audioCtx.destination);
+  sfxGain=audioCtx.createGain();
+  sfxGain.gain.value=.85;
+  sfxGain.connect(masterGain);
+  musicGain=audioCtx.createGain();
+  musicGain.gain.value=0;
+  musicGain.connect(masterGain);
+}
+document.addEventListener(
+  'pointerdown',
+  ()=>{
+    ensureAudio();
+    if(audioCtx&&audioCtx.state==='suspended'){
+      audioCtx.resume();
+    }
+    if(
+      typeof gameState!=='undefined'&&
+      gameState==='menu'
+    ){
+      startLobbyMusic();
+    }
+  }
+);
+function noiseBuffer(duration){
+  const rate=audioCtx.sampleRate;
+  const len=Math.max(1,Math.floor(rate*duration));
+  const buffer=audioCtx.createBuffer(1,len,rate);
+  const data=buffer.getChannelData(0);
+  for(let i=0;i<len;i++){
+    data[i]=Math.random()*2-1;
+  }
+  return buffer;
+}
+/*
+  GUNFIRE — a filtered noise burst (the "crack") layered with
+  a short pitched-down triangle thump (the "body") so it
+  reads as a gunshot rather than plain noise. Per-weapon
+  params give each operator's gun a distinct voice; `atten`
+  (0-1) fades bot gunfire heard at a distance from the player.
+*/
+const WEAPON_SOUND_PARAMS={
+  rifle:{freq:1150,dur:.09,tone:170,toneDur:.09,gain:.55},
+  smg:{freq:1700,dur:.055,tone:280,toneDur:.05,gain:.32},
+  smg_silenced:{freq:2200,dur:.04,tone:320,toneDur:.035,gain:.16},
+  shotgun:{freq:650,dur:.17,tone:85,toneDur:.15,gain:.75},
+  dmr:{freq:950,dur:.15,tone:130,toneDur:.18,gain:.65},
+  burst:{freq:1300,dur:.075,tone:220,toneDur:.065,gain:.4}
+};
+function weaponSoundType(op){
+  if(!op)
+    return 'rifle';
+  switch(op.id){
+    case 'siege':return 'shotgun';
+    case 'phantom':return 'smg';
+    case 'vesper':return 'smg_silenced';
+    case 'warden':return 'dmr';
+    case 'ember':return 'burst';
+    default:return 'rifle';
+  }
+}
+function playGunfire(op,distance){
+  ensureAudio();
+  if(!audioCtx)
+    return;
+  const atten=
+    distance==null
+    ?1
+    :Math.max(0,1-distance/55);
+  if(atten<=.015)
+    return;
+  const p=
+    WEAPON_SOUND_PARAMS[weaponSoundType(op)]||
+    WEAPON_SOUND_PARAMS.rifle;
+  const t=audioCtx.currentTime;
+  const noise=audioCtx.createBufferSource();
+  noise.buffer=noiseBuffer(p.dur+.02);
+  const filt=audioCtx.createBiquadFilter();
+  filt.type='bandpass';
+  filt.frequency.value=p.freq;
+  filt.Q.value=.8;
+  const noiseGain=audioCtx.createGain();
+  noiseGain.gain.setValueAtTime(p.gain*atten,t);
+  noiseGain.gain.exponentialRampToValueAtTime(.001,t+p.dur);
+  noise.connect(filt).connect(noiseGain).connect(sfxGain);
+  noise.start(t);
+  noise.stop(t+p.dur+.03);
+  const osc=audioCtx.createOscillator();
+  osc.type='triangle';
+  osc.frequency.setValueAtTime(p.tone,t);
+  osc.frequency.exponentialRampToValueAtTime(
+    p.tone*.5,t+p.toneDur
+  );
+  const oscGain=audioCtx.createGain();
+  oscGain.gain.setValueAtTime(p.gain*.8*atten,t);
+  oscGain.gain.exponentialRampToValueAtTime(.001,t+p.toneDur);
+  osc.connect(oscGain).connect(sfxGain);
+  osc.start(t);
+  osc.stop(t+p.toneDur+.03);
+}
+function playReloadSound(){
+  ensureAudio();
+  if(!audioCtx)
+    return;
+  const t=audioCtx.currentTime;
+  [0,.09].forEach((delay,i)=>{
+    const osc=audioCtx.createOscillator();
+    osc.type='square';
+    osc.frequency.value=i===0?420:620;
+    const g=audioCtx.createGain();
+    g.gain.setValueAtTime(.001,t+delay);
+    g.gain.linearRampToValueAtTime(.18,t+delay+.005);
+    g.gain.exponentialRampToValueAtTime(.001,t+delay+.06);
+    osc.connect(g).connect(sfxGain);
+    osc.start(t+delay);
+    osc.stop(t+delay+.08);
+  });
+}
+function playHitmarker(headshot){
+  ensureAudio();
+  if(!audioCtx)
+    return;
+  const t=audioCtx.currentTime;
+  const osc=audioCtx.createOscillator();
+  osc.type='square';
+  osc.frequency.setValueAtTime(headshot?1400:900,t);
+  osc.frequency.exponentialRampToValueAtTime(
+    headshot?900:600,t+.05
+  );
+  const g=audioCtx.createGain();
+  g.gain.setValueAtTime(.22,t);
+  g.gain.exponentialRampToValueAtTime(.001,t+.09);
+  osc.connect(g).connect(sfxGain);
+  osc.start(t);
+  osc.stop(t+.1);
+}
+function playAbilitySound(){
+  ensureAudio();
+  if(!audioCtx)
+    return;
+  const t=audioCtx.currentTime;
+  const osc=audioCtx.createOscillator();
+  osc.type='sawtooth';
+  osc.frequency.setValueAtTime(160,t);
+  osc.frequency.linearRampToValueAtTime(520,t+.3);
+  const g=audioCtx.createGain();
+  g.gain.setValueAtTime(.001,t);
+  g.gain.linearRampToValueAtTime(.22,t+.05);
+  g.gain.exponentialRampToValueAtTime(.001,t+.32);
+  osc.connect(g).connect(sfxGain);
+  osc.start(t);
+  osc.stop(t+.34);
+}
+function playUiClick(){
+  ensureAudio();
+  if(!audioCtx)
+    return;
+  const t=audioCtx.currentTime;
+  const osc=audioCtx.createOscillator();
+  osc.type='sine';
+  osc.frequency.setValueAtTime(700,t);
+  osc.frequency.exponentialRampToValueAtTime(300,t+.08);
+  const g=audioCtx.createGain();
+  g.gain.setValueAtTime(.16,t);
+  g.gain.exponentialRampToValueAtTime(.001,t+.09);
+  osc.connect(g).connect(sfxGain);
+  osc.start(t);
+  osc.stop(t+.1);
+}
+function playRoundStinger(won){
+  ensureAudio();
+  if(!audioCtx)
+    return;
+  const t=audioCtx.currentTime;
+  const notes=
+    won?[440,554,659,880]:[440,392,330,262];
+  notes.forEach((f,i)=>{
+    const osc=audioCtx.createOscillator();
+    osc.type='triangle';
+    osc.frequency.value=f;
+    const g=audioCtx.createGain();
+    const start=t+i*.11;
+    g.gain.setValueAtTime(.001,start);
+    g.gain.linearRampToValueAtTime(.2,start+.02);
+    g.gain.exponentialRampToValueAtTime(.001,start+.3);
+    osc.connect(g).connect(sfxGain);
+    osc.start(start);
+    osc.stop(start+.32);
+  });
+}
+function playFinisherSound(type){
+  ensureAudio();
+  if(!audioCtx)
+    return;
+  const t=audioCtx.currentTime;
+  if(type==='slowmo'){
+    const osc=audioCtx.createOscillator();
+    osc.type='sine';
+    osc.frequency.setValueAtTime(300,t);
+    osc.frequency.exponentialRampToValueAtTime(60,t+.5);
+    const g=audioCtx.createGain();
+    g.gain.setValueAtTime(.001,t);
+    g.gain.linearRampToValueAtTime(.25,t+.05);
+    g.gain.exponentialRampToValueAtTime(.001,t+.55);
+    osc.connect(g).connect(sfxGain);
+    osc.start(t);
+    osc.stop(t+.6);
+  }
+  else if(type==='flash'){
+    const noise=audioCtx.createBufferSource();
+    noise.buffer=noiseBuffer(.15);
+    const filt=audioCtx.createBiquadFilter();
+    filt.type='highpass';
+    filt.frequency.value=1800;
+    const g=audioCtx.createGain();
+    g.gain.setValueAtTime(.5,t);
+    g.gain.exponentialRampToValueAtTime(.001,t+.15);
+    noise.connect(filt).connect(g).connect(sfxGain);
+    noise.start(t);
+    noise.stop(t+.16);
+  }
+  else if(type==='gold'){
+    [660,880,1100,1320].forEach((f,i)=>{
+      const osc=audioCtx.createOscillator();
+      osc.type='sine';
+      osc.frequency.value=f;
+      const g=audioCtx.createGain();
+      const start=t+i*.06;
+      g.gain.setValueAtTime(.001,start);
+      g.gain.linearRampToValueAtTime(.18,start+.02);
+      g.gain.exponentialRampToValueAtTime(.001,start+.2);
+      osc.connect(g).connect(sfxGain);
+      osc.start(start);
+      osc.stop(start+.22);
+    });
+  }
+  else if(type==='shockwave'){
+    const osc=audioCtx.createOscillator();
+    osc.type='sine';
+    osc.frequency.setValueAtTime(140,t);
+    osc.frequency.exponentialRampToValueAtTime(40,t+.35);
+    const g=audioCtx.createGain();
+    g.gain.setValueAtTime(.4,t);
+    g.gain.exponentialRampToValueAtTime(.001,t+.4);
+    osc.connect(g).connect(sfxGain);
+    osc.start(t);
+    osc.stop(t+.42);
+  }
+}
+/*
+  LOBBY MUSIC — a slow, detuned multi-oscillator pad plus a
+  gentle LFO tremolo on the music bus, looping for as long as
+  the menu is open. Stops the instant DEPLOY is pressed.
+*/
+let lobbyMusicNodes=null;
+function startLobbyMusic(){
+  ensureAudio();
+  if(!audioCtx||lobbyMusicNodes)
+    return;
+  const notes=[110,164.81,220,261.63];
+  const oscs=notes.map((f,i)=>{
+    const osc=audioCtx.createOscillator();
+    osc.type=i===0?'sine':'triangle';
+    osc.frequency.value=f;
+    osc.detune.value=(i-1.5)*4;
+    const g=audioCtx.createGain();
+    g.gain.value=i===0?.16:.07;
+    osc.connect(g).connect(musicGain);
+    osc.start();
+    return {osc,g};
+  });
+  const lfo=audioCtx.createOscillator();
+  lfo.frequency.value=.08;
+  const lfoGain=audioCtx.createGain();
+  lfoGain.gain.value=.1;
+  lfo.connect(lfoGain).connect(musicGain.gain);
+  lfo.start();
+  musicGain.gain.setTargetAtTime(.22,audioCtx.currentTime,.4);
+  lobbyMusicNodes={oscs,lfo};
+}
+function stopLobbyMusic(){
+  if(!lobbyMusicNodes||!audioCtx)
+    return;
+  const t=audioCtx.currentTime;
+  lobbyMusicNodes.oscs.forEach(({osc,g})=>{
+    g.gain.setTargetAtTime(0,t,.15);
+    osc.stop(t+.6);
+  });
+  lobbyMusicNodes.lfo.stop(t+.6);
+  lobbyMusicNodes=null;
+}
+/* =========================================================
    RAYCASTER
 ========================================================= */
 const raycaster=
@@ -4113,7 +4665,16 @@ function fireWeaponRay(origin,dir){
       closestDist<wallDist
     )
   ){
-    if(closestIsHead){
+    if(closestIsHead&&!player.cheatActive){
+      /*
+        Instant headshot kill — suppressed while the secret
+        cheat is active (see activateSecretCheat()). The
+        cheat's laser is a hold-the-trigger continuous beam;
+        letting a headshot still insta-kill the moment the
+        beam merely touches the head hitbox would make that
+        "keep the beam on target" mechanic pointless. Regular
+        weapons are unaffected.
+      */
       closestEnemy.hp=0;
     }
     else{
@@ -4125,6 +4686,7 @@ function fireWeaponRay(origin,dir){
       closestIsHead?.7:.5,
       closestIsHead?.2:.12
     );
+    playHitmarker(closestIsHead);
     if(
       closestEnemy.hp<=0 &&
       !closestEnemy.dead
@@ -4135,9 +4697,11 @@ function fireWeaponRay(origin,dir){
       );
       score+=
         closestIsHead?150:100;
+      addTokens(10);
       if(closestIsHead){
         showMsg('HEADSHOT',700);
       }
+      triggerFinisher(endPoint);
       checkEliminationWin();
     }
   }
@@ -4181,6 +4745,7 @@ function playerShoot(){
     ? player.fireCdBase*.55
     : player.fireCdBase;
   player.ammo--;
+  playGunfire(currentOperator,0);
   /*
     RECOIL KICK — each trigger pull adds an instant
     impulse; the decay happens once per frame in update().
@@ -4257,6 +4822,7 @@ function playerShoot(){
     player.ammo<=0
   ){
     player.reloadCd=player.reloadTime;
+    playReloadSound();
   }
 }
 /* =========================================================
@@ -4429,6 +4995,13 @@ function botFireAt(shooter,target){
     origin,
     targetPos,
     true
+  );
+  playGunfire(
+    shooter.op,
+    Math.hypot(
+      player.x-shooter.x,
+      player.z-shooter.z
+    )
   );
   const baseChance=
     isPlayer
@@ -4887,10 +5460,13 @@ function victory(){
     return;
   gameState='victory';
   score+=500;
+  addTokens(150);
   mouseDown=false;
+  setLaserSoundLevel(0);
   showMsg(
     'MATCH WON '+matchWins+'-'+matchLosses+
-    ' — PRESS R FOR OPERATOR SELECT',
+    ' — PRESS R FOR OPERATOR SELECT ('+
+    '+150 TOKENS)',
     999999
   );
 }
@@ -4921,6 +5497,9 @@ function playerWinsRound(text){
   gameState='roundover';
   score+=500;
   matchWins++;
+  addTokens(50);
+  setLaserSoundLevel(0);
+  playRoundStinger(true);
   hideBomb();
   viewingCamIndex=-1;
   document
@@ -4974,6 +5553,8 @@ function loseRound(text){
     return;
   gameState='roundover';
   matchLosses++;
+  setLaserSoundLevel(0);
+  playRoundStinger(false);
   hideBomb();
   viewingCamIndex=-1;
   document
@@ -5243,6 +5824,7 @@ function triggerAbility(){
     ' ACTIVATED',
     1400
   );
+  playAbilitySound();
   switch(currentOperator.id){
     case 'vanguard':
       throwFragCharge();
@@ -5318,6 +5900,10 @@ function explodeGrenade(pos){
         en.dead=true;
         scene.remove(en.group);
         score+=100;
+        addTokens(10);
+        triggerFinisher(
+          new THREE.Vector3(en.x,1.2,en.z)
+        );
         checkEliminationWin();
       }
     }
@@ -5674,6 +6260,7 @@ function startDeathCam(
   deathCamShown=true;
   killCam.active=true;
   killCam.timer=0;
+  setLaserSoundLevel(0);
   killCam.targetPos.set(
     killer.x,1.4,killer.z
   );
@@ -5751,6 +6338,15 @@ function update(){
       .05,
       clock.getDelta()
     );
+  /*
+    Hidden by default every single frame, including every
+    early-return path below (menu, killcam, roundover...) —
+    only the active-firing branch deep in the 'playing' state
+    turns it back on for this frame. Without this the beam
+    would freeze on-screen, still visible, the instant a round
+    ends or the kill/death cam kicks in mid-beam.
+  */
+  hideLaserVisuals();
   skyDome.position.copy(
     camera.position
   );
@@ -6094,8 +6690,19 @@ function update(){
     player.abilityCd=
       Math.max(0,player.abilityCd-dt);
   }
-  if(mouseDown&&inputActive&&player.hp>0)
-    playerShoot();
+  if(mouseDown&&inputActive&&player.hp>0){
+    if(player.cheatActive){
+      setLaserSoundLevel(.24);
+      updateCheatLaser(dt);
+    }
+    else{
+      setLaserSoundLevel(0);
+      playerShoot();
+    }
+  }
+  else{
+    setLaserSoundLevel(0);
+  }
   if(
     keys['r'] &&
     inputActive &&
@@ -6104,6 +6711,7 @@ function update(){
     player.reloadCd<=0
   ){
     player.reloadCd=player.reloadTime;
+    playReloadSound();
   }
   /* =====================================================
      BREACH — a tactical tool available to either side
@@ -6328,6 +6936,24 @@ function update(){
       }
       return true;
     });
+  shockwaves.forEach(s=>{
+    s.life-=dt;
+    const t=1-Math.max(0,s.life/s.maxLife);
+    const scale=1+t*9;
+    s.mesh.scale.set(scale,scale,scale);
+    s.mesh.material.opacity=
+      Math.max(0,s.life/s.maxLife)*.8;
+  });
+  shockwaves=
+    shockwaves.filter(s=>{
+      if(s.life<=0){
+        scene.remove(s.mesh);
+        s.mesh.geometry.dispose();
+        s.mesh.material.dispose();
+        return false;
+      }
+      return true;
+    });
   /* =====================================================
      TRACER CLEANUP
   ===================================================== */
@@ -6415,6 +7041,7 @@ window.addEventListener(
       document
         .getElementById('menuScreen')
         .style.display='flex';
+      startLobbyMusic();
     }
   },
   {
@@ -6598,9 +7225,24 @@ function applyOperatorLoadout(op){
     OPERATOR_SKINS[selectedSkinIndex]||
     OPERATOR_SKINS[0];
   gunBody.material.color.setHex(skin.base);
+  gunBody.material.metalness=skin.metalness??.8;
+  gunBody.material.roughness=skin.roughness??.3;
+  gunBody.material.emissive.setHex(0x000000);
+  gunBody.material.emissiveIntensity=0;
   upperReceiver.material.color.setHex(skin.panel);
+  upperReceiver.material.metalness=skin.metalness??.85;
+  upperReceiver.material.roughness=skin.roughness??.25;
+  upperReceiver.material.emissive.setHex(0x000000);
+  upperReceiver.material.emissiveIntensity=0;
   handguard.material.color.setHex(skin.panel);
+  handguard.material.metalness=skin.metalness??.8;
+  handguard.material.roughness=(skin.roughness??.3)+.05;
+  handguard.material.emissive.setHex(0x000000);
+  handguard.material.emissiveIntensity=0;
   rail.material.color.setHex(skin.trim);
+  rail.material.metalness=skin.metalness??.8;
+  rail.material.emissive.setHex(skin.trimEmissive||0x000000);
+  rail.material.emissiveIntensity=skin.trimEmissiveIntensity||0;
   player.maxHp=op.maxHp;
   player.hp=op.maxHp;
   player.speed=5.2*op.speedMul;
@@ -6613,6 +7255,7 @@ function applyOperatorLoadout(op){
   player.range=op.weapon.range;
   player.reloadTime=op.weapon.reload;
   player.infiniteAmmo=false;
+  player.cheatActive=false;
   player.abilityCd=0;
   player.cloakTimer=0;
   player.intelTimer=0;
@@ -6638,25 +7281,29 @@ function applyOperatorLoadout(op){
   canvas while it's active, so this hotspot is only reachable
   when the lock is released (ESC pauses the round without
   ending it) — nobody clicks it by accident mid-fight. Grants
-  a fully-automatic DMR (high damage, fast cyclic rate, tight
-  spread, long range), infinite ammo, and a 10000 HP cushion.
+  a continuous-beam laser (hold the trigger down and it just
+  keeps dealing damage the whole time it's on target — see
+  updateCheatLaser()), infinite ammo, and a 10000 HP cushion.
+  Headshots are deliberately NOT an instant kill while this
+  is active (see the player.cheatActive check in
+  fireWeaponRay() and the flat per-tick math in
+  updateCheatLaser()) — with a hold-to-fire beam, an instant
+  headshot kill would make "keep the beam on target" pointless.
   Overwritten the moment the player redeploys with a real
-  operator loadout (see the infiniteAmmo reset in
-  applyOperatorLoadout()), same as every other loadout stat.
+  operator loadout (see the resets in applyOperatorLoadout()),
+  same as every other loadout stat.
 */
 function activateSecretCheat(){
   player.hp=10000;
   player.maxHp=10000;
   player.weaponDmg=500;
-  player.fireCdBase=.06;
-  player.pellets=1;
-  player.spread=.0015;
   player.range=120;
   player.reloadTime=0;
   player.reloadCd=0;
   player.infiniteAmmo=true;
   player.maxAmmo=Infinity;
   player.ammo=Infinity;
+  player.cheatActive=true;
   if(currentOperator){
     currentOperator=Object.assign(
       {},currentOperator,
@@ -6664,18 +7311,653 @@ function activateSecretCheat(){
         weapon:Object.assign(
           {},currentOperator.weapon,
           {
-            name:'RX-DMR RIFLE (AUTO)',
+            name:'PX-LASER EMITTER',
             dmg:player.weaponDmg,
-            fireCd:player.fireCdBase,
-            spread:player.spread,
             range:player.range
           }
         )
       }
     );
   }
+  /*
+    Reskin the held view-model to sell "laser" rather than
+    "gun" — a hot magenta glow on the same four meshes the
+    normal skin system already paints (see
+    applyOperatorLoadout()), so redeploying with a real
+    operator naturally restores the chosen skin's colors.
+  */
+  gunBody.material.color.setHex(0x2a0a14);
+  gunBody.material.emissive.setHex(0xff1050);
+  gunBody.material.emissiveIntensity=.9;
+  gunBody.material.metalness=.4;
+  gunBody.material.roughness=.25;
+  upperReceiver.material.color.setHex(0x1a0a10);
+  upperReceiver.material.emissive.setHex(0xff2060);
+  upperReceiver.material.emissiveIntensity=.7;
+  handguard.material.color.setHex(0x1a0a10);
+  handguard.material.emissive.setHex(0xff2060);
+  handguard.material.emissiveIntensity=.5;
+  rail.material.color.setHex(0xff3a70);
+  rail.material.emissive.setHex(0xff3a70);
+  rail.material.emissiveIntensity=1.2;
   updateHud();
-  showMsg('CHEAT ENGAGED',1600);
+  showMsg('CHEAT ENGAGED — LASER ONLINE',1600);
+}
+/* =========================================================
+   BOSS KEY
+   A visible panic button (menu screen, top-right corner, and
+   the F9 hotkey work everywhere, not just from the menu,
+   since a boss key that only works before you've deployed
+   defeats the point). Instantly swaps the whole page for a
+   boring fake spreadsheet. Reuses the existing pause-on-
+   unlock behavior (see the `locked` gate at the top of
+   update()) so a round in progress just freezes rather than
+   continuing to play out unseen behind the overlay.
+========================================================= */
+function buildBossKeyGrid(){
+  const cols=['A','B','C','D','E','F','G','H','I','J'];
+  const labels=[
+    'Line Item','Q1','Q2','Q3','Q4','Variance','Owner','Status','Notes',''
+  ];
+  const rows=[
+    ['Facilities Lease','12,400','12,400','12,600','12,600','+200','R. Alvarez','On Track',''],
+    ['Cloud Infrastructure','8,120','8,940','9,300','9,120','-180','D. Chen','Review',''],
+    ['Headcount - Eng','142,000','148,500','151,200','155,000','+3,800','M. Osei','On Track',''],
+    ['Marketing Spend','21,300','19,800','22,100','24,000','+1,900','J. Park','On Track',''],
+    ['Travel & Events','4,410','2,980','5,120','6,040','+920','R. Alvarez','Over Budget',''],
+    ['Software Licensing','6,700','6,700','7,050','7,050','flat','D. Chen','On Track',''],
+    ['Contractor Fees','15,900','14,200','13,750','12,900','-850','M. Osei','On Track',''],
+    ['Office Supplies','1,120','980','1,040','1,010','-30','J. Park','On Track',''],
+    ['Training Budget','3,300','3,300','2,900','3,500','+600','R. Alvarez','On Track',''],
+    ['Misc / Contingency','2,000','1,450','1,780','1,620','-160','D. Chen','On Track','']
+  ];
+  let html=
+    '<table style="border-collapse:collapse;width:100%;font-size:12px;table-layout:fixed;">'+
+    '<tr><td style="width:26px;background:#eef0f2;border:1px solid #d7dbe0;"></td>'+
+    cols.map(c=>'<td style="background:#eef0f2;border:1px solid #d7dbe0;text-align:center;color:#555;padding:3px;">'+c+'</td>').join('')+
+    '</tr>';
+  html+=
+    '<tr><td style="background:#eef0f2;border:1px solid #d7dbe0;text-align:center;color:#555;">1</td>'+
+    labels.map(l=>'<td style="border:1px solid #d7dbe0;padding:3px 6px;font-weight:600;background:#f8f9fa;">'+l+'</td>').join('')+
+    '</tr>';
+  rows.forEach((r,i)=>{
+    html+=
+      '<tr><td style="background:#eef0f2;border:1px solid #d7dbe0;text-align:center;color:#555;">'+(i+2)+'</td>'+
+      r.map(v=>'<td style="border:1px solid #d7dbe0;padding:3px 6px;white-space:nowrap;overflow:hidden;">'+v+'</td>').join('')+
+      '</tr>';
+  });
+  for(let i=0;i<12;i++){
+    html+=
+      '<tr><td style="background:#eef0f2;border:1px solid #d7dbe0;text-align:center;color:#555;">'+(rows.length+2+i)+'</td>'+
+      cols.map(()=>'<td style="border:1px solid #d7dbe0;padding:3px 6px;">&nbsp;</td>').join('')+
+      '</tr>';
+  }
+  html+='</table>';
+  document.getElementById('bossKeyGrid').innerHTML=html;
+}
+buildBossKeyGrid();
+let bossKeyActive=false;
+function toggleBossKey(){
+  bossKeyActive=!bossKeyActive;
+  document.getElementById('bossKeyOverlay').style.display=
+    bossKeyActive?'block':'none';
+  if(bossKeyActive){
+    mouseDown=false;
+    if(document.pointerLockElement){
+      document.exitPointerLock();
+    }
+  }
+}
+document.addEventListener('keydown',e=>{
+  if(e.key==='F9'){
+    e.preventDefault();
+    toggleBossKey();
+  }
+});
+/* =========================================================
+   TOKENS — a persistent currency (localStorage-backed, so
+   it survives a page reload) earned from kills and round/
+   match wins, spent in the finisher shop below.
+========================================================= */
+const TOKENS_KEY='bp_tokens_v1';
+let tokens=0;
+function loadTokens(){
+  try{
+    const raw=localStorage.getItem(TOKENS_KEY);
+    tokens=raw?(parseInt(raw,10)||0):0;
+  }
+  catch(e){
+    tokens=0;
+  }
+}
+function saveTokens(){
+  try{
+    localStorage.setItem(TOKENS_KEY,String(tokens));
+  }
+  catch(e){}
+}
+function updateTokenHud(){
+  const a=document.getElementById('tokenVal');
+  if(a)
+    a.textContent=tokens;
+  const b=document.getElementById('menuTokenVal');
+  if(b)
+    b.textContent=tokens;
+  const c=document.getElementById('shopTokenVal');
+  if(c)
+    c.textContent=tokens;
+}
+function addTokens(n){
+  tokens+=n;
+  saveTokens();
+  updateTokenHud();
+}
+loadTokens();
+/* =========================================================
+   FINISHERS — cosmetic kill-confirm flourishes bought in the
+   shop with tokens. Only the equipped one (if any) fires,
+   from triggerFinisher() at every kill site (bullet, grenade,
+   and the cheat laser). Purely cosmetic: no gameplay effect,
+   no altered damage or timing, so it's safe to call from any
+   kill path without touching that path's own logic.
+========================================================= */
+const FINISHERS=[
+  {
+    id:'slowmo',
+    name:'SLOW-MO EXECUTION',
+    cost:100,
+    desc:'A brief zoom-punch and desaturation pulse on the kill.'
+  },
+  {
+    id:'flash',
+    name:'FLASHBANG FINISH',
+    cost:150,
+    desc:'A sharp white flash and crack the instant they drop.'
+  },
+  {
+    id:'gold',
+    name:'GOLD SPARKS',
+    cost:200,
+    desc:'A shower of golden sparks and a coin chime.'
+  },
+  {
+    id:'shockwave',
+    name:'SHOCKWAVE',
+    cost:250,
+    desc:'An expanding shockwave ring and a bass hit.'
+  }
+];
+const FINISHERS_OWNED_KEY='bp_finishers_owned_v1';
+const FINISHER_EQUIPPED_KEY='bp_finisher_equipped_v1';
+let ownedFinishers=[];
+let equippedFinisher=null;
+function loadFinishers(){
+  try{
+    const raw=localStorage.getItem(FINISHERS_OWNED_KEY);
+    ownedFinishers=raw?JSON.parse(raw):[];
+    if(!Array.isArray(ownedFinishers))
+      ownedFinishers=[];
+  }
+  catch(e){
+    ownedFinishers=[];
+  }
+  try{
+    equippedFinisher=
+      localStorage.getItem(FINISHER_EQUIPPED_KEY)||null;
+  }
+  catch(e){
+    equippedFinisher=null;
+  }
+  if(
+    equippedFinisher&&
+    !ownedFinishers.includes(equippedFinisher)
+  ){
+    equippedFinisher=null;
+  }
+}
+function saveFinishers(){
+  try{
+    localStorage.setItem(
+      FINISHERS_OWNED_KEY,
+      JSON.stringify(ownedFinishers)
+    );
+    if(equippedFinisher){
+      localStorage.setItem(
+        FINISHER_EQUIPPED_KEY,equippedFinisher
+      );
+    }
+    else{
+      localStorage.removeItem(FINISHER_EQUIPPED_KEY);
+    }
+  }
+  catch(e){}
+}
+loadFinishers();
+function buyFinisher(id){
+  const fin=FINISHERS.find(f=>f.id===id);
+  if(!fin||ownedFinishers.includes(id))
+    return;
+  if(tokens<fin.cost)
+    return;
+  tokens-=fin.cost;
+  saveTokens();
+  ownedFinishers.push(id);
+  equippedFinisher=id;
+  saveFinishers();
+  updateTokenHud();
+  renderShop();
+  playUiClick();
+}
+function equipFinisher(id){
+  if(!ownedFinishers.includes(id))
+    return;
+  equippedFinisher=
+    equippedFinisher===id?null:id;
+  saveFinishers();
+  renderShop();
+  playUiClick();
+}
+function renderShop(){
+  const grid=document.getElementById('shopGrid');
+  if(!grid)
+    return;
+  grid.innerHTML='';
+  FINISHERS.forEach(fin=>{
+    const owned=ownedFinishers.includes(fin.id);
+    const equipped=equippedFinisher===fin.id;
+    const card=document.createElement('div');
+    card.style.cssText=
+      'background:#171d15;border:1px solid '+
+      (equipped?'#c9d94a':'#2a3524')+
+      ';border-radius:8px;padding:12px;display:flex;'+
+      'flex-direction:column;gap:8px;';
+    const title=document.createElement('div');
+    title.style.cssText=
+      'font:700 13px system-ui,sans-serif;color:'+
+      (equipped?'#c9d94a':'#e6e6d8')+
+      ';letter-spacing:.03em;';
+    title.textContent=fin.name;
+    const desc=document.createElement('div');
+    desc.style.cssText=
+      'font:12px system-ui,sans-serif;color:#8a9a86;flex:1;';
+    desc.textContent=fin.desc;
+    const btn=document.createElement('button');
+    btn.style.cssText=
+      'font:700 12px system-ui,sans-serif;border-radius:5px;'+
+      'padding:8px;cursor:pointer;border:1px solid transparent;';
+    if(equipped){
+      btn.textContent='EQUIPPED — UNEQUIP';
+      btn.style.background='#c9d94a';
+      btn.style.color='#131810';
+      btn.onclick=()=>equipFinisher(fin.id);
+    }
+    else if(owned){
+      btn.textContent='EQUIP';
+      btn.style.background='#2a3524';
+      btn.style.color='#c9d94a';
+      btn.style.borderColor='#3a4a38';
+      btn.onclick=()=>equipFinisher(fin.id);
+    }
+    else{
+      const afford=tokens>=fin.cost;
+      btn.textContent=
+        (afford?'BUY — ':'NEED ')+fin.cost+' TOKENS';
+      btn.style.background=afford?'#3a4a24':'#1a1f18';
+      btn.style.color=afford?'#e6ffb0':'#5a6a56';
+      btn.style.cursor=afford?'pointer':'not-allowed';
+      btn.disabled=!afford;
+      if(afford)
+        btn.onclick=()=>buyFinisher(fin.id);
+    }
+    card.appendChild(title);
+    card.appendChild(desc);
+    card.appendChild(btn);
+    grid.appendChild(card);
+  });
+}
+function openShop(){
+  updateTokenHud();
+  renderShop();
+  document.getElementById('shopOverlay').style.display='block';
+  playUiClick();
+}
+function closeShop(){
+  document.getElementById('shopOverlay').style.display='none';
+  playUiClick();
+}
+document
+  .getElementById('shopOpenBtn')
+  .addEventListener('click',openShop);
+document
+  .getElementById('shopCloseBtn')
+  .addEventListener('click',closeShop);
+/*
+  SHOCKWAVE PROP — the one finisher effect that needs its own
+  small per-frame animation (an expanding, fading ring) rather
+  than reusing spawnGlowParticle/spawnFlashLight as-is; updated
+  alongside particles/flashLights in the PARTICLE / LIGHT
+  CLEANUP section of update().
+*/
+let shockwaves=[];
+function spawnShockwave(pos,color){
+  const mesh=
+    new THREE.Mesh(
+      new THREE.RingGeometry(.15,.45,28),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent:true,
+        opacity:.8,
+        side:THREE.DoubleSide,
+        blending:THREE.AdditiveBlending,
+        depthWrite:false
+      })
+    );
+  mesh.rotation.x=-Math.PI/2;
+  mesh.position.set(pos.x,.12,pos.z);
+  scene.add(mesh);
+  shockwaves.push({mesh,life:.6,maxLife:.6});
+}
+function triggerFinisher(pos){
+  if(!equippedFinisher)
+    return;
+  const p=
+    pos.clone?pos.clone():
+    new THREE.Vector3(pos.x,pos.y||1.4,pos.z);
+  if(equippedFinisher==='slowmo'){
+    const prevFov=camera.fov;
+    camera.fov=Math.max(28,camera.fov-9);
+    camera.updateProjectionMatrix();
+    setTimeout(()=>{
+      camera.fov=prevFov;
+      camera.updateProjectionMatrix();
+    },260);
+    const flash=document.getElementById('finisherFlash');
+    flash.style.background=
+      'radial-gradient(circle,rgba(255,255,255,.12),rgba(0,0,0,.4))';
+    flash.style.opacity=1;
+    setTimeout(()=>{flash.style.opacity=0;},220);
+    spawnFlashLight(p,0xffffff,1.2,.3);
+    playFinisherSound('slowmo');
+  }
+  else if(equippedFinisher==='flash'){
+    const flash=document.getElementById('finisherFlash');
+    flash.style.background='#fff';
+    flash.style.opacity=.9;
+    setTimeout(()=>{flash.style.opacity=0;},150);
+    spawnFlashLight(p,0xffffff,2,.25);
+    playFinisherSound('flash');
+  }
+  else if(equippedFinisher==='gold'){
+    for(let i=0;i<10;i++){
+      spawnGlowParticle(
+        p.clone().add(
+          new THREE.Vector3(
+            (Math.random()-.5)*.6,
+            Math.random()*.6,
+            (Math.random()-.5)*.6
+          )
+        ),
+        0xffd54a,
+        .32,
+        .45+Math.random()*.3,
+        new THREE.Vector3(
+          (Math.random()-.5)*2,
+          Math.random()*2+.5,
+          (Math.random()-.5)*2
+        )
+      );
+    }
+    playFinisherSound('gold');
+  }
+  else if(equippedFinisher==='shockwave'){
+    spawnShockwave(p,0x60c0ff);
+    spawnFlashLight(p,0x60c0ff,1.5,.4);
+    playFinisherSound('shockwave');
+  }
+}
+/* =========================================================
+   CHEAT LASER — continuous-beam variant of fireWeaponRay()
+   used only while player.cheatActive is set. Ticks every
+   frame the trigger is held (see the mouseDown branch in
+   update()) instead of gating on ammo/fireCd like a normal
+   weapon, applying dt-scaled damage-per-second rather than
+   a single lump per click — that's what makes it a beam you
+   hold on target instead of a very fast-clicking gun.
+========================================================= */
+const laserBeamMat=
+  new THREE.MeshBasicMaterial({
+    color:0xff2050,
+    transparent:true,
+    opacity:.85,
+    blending:THREE.AdditiveBlending,
+    depthWrite:false
+  });
+const laserBeamMesh=
+  new THREE.Mesh(
+    new THREE.CylinderGeometry(.025,.025,1,8,1,true),
+    laserBeamMat
+  );
+laserBeamMesh.visible=false;
+scene.add(laserBeamMesh);
+const laserCoreMat=
+  new THREE.MeshBasicMaterial({
+    color:0xffe0ea,
+    transparent:true,
+    opacity:.9,
+    blending:THREE.AdditiveBlending,
+    depthWrite:false
+  });
+const laserCoreMesh=
+  new THREE.Mesh(
+    new THREE.CylinderGeometry(.008,.008,1,6,1,true),
+    laserCoreMat
+  );
+laserCoreMesh.visible=false;
+scene.add(laserCoreMesh);
+const laserHitGlow=
+  new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map:glowTex,
+      color:0xff3a70,
+      transparent:true,
+      opacity:.9,
+      blending:THREE.AdditiveBlending,
+      depthWrite:false
+    })
+  );
+laserHitGlow.scale.set(.55,.55,.55);
+laserHitGlow.visible=false;
+scene.add(laserHitGlow);
+function hideLaserVisuals(){
+  laserBeamMesh.visible=false;
+  laserCoreMesh.visible=false;
+  laserHitGlow.visible=false;
+}
+/*
+  LASER HUM — a single persistent oscillator created once and
+  left running for the rest of the session; only its gain is
+  ever touched (smoothly ramped, never start()/stop() on every
+  frame — that would click/stutter on a continuous beam).
+  setLaserSoundLevel() is edge-triggered (skips redundant
+  scheduling when the level hasn't actually changed) so it's
+  safe to call from every firing frame.
+*/
+let laserOscNode=null;
+let laserOscGainNode=null;
+let laserLfoNode=null;
+let laserSoundLevelState=0;
+function ensureLaserOsc(){
+  ensureAudio();
+  if(!audioCtx||laserOscNode)
+    return;
+  laserOscNode=audioCtx.createOscillator();
+  laserOscNode.type='sawtooth';
+  laserOscNode.frequency.value=520;
+  laserLfoNode=audioCtx.createOscillator();
+  laserLfoNode.frequency.value=14;
+  const lfoGain=audioCtx.createGain();
+  lfoGain.gain.value=40;
+  laserLfoNode
+    .connect(lfoGain)
+    .connect(laserOscNode.frequency);
+  laserOscGainNode=audioCtx.createGain();
+  laserOscGainNode.gain.value=0;
+  laserOscNode.connect(laserOscGainNode).connect(sfxGain);
+  laserOscNode.start();
+  laserLfoNode.start();
+}
+function setLaserSoundLevel(level){
+  if(level>0&&!laserOscNode){
+    ensureLaserOsc();
+  }
+  if(level===laserSoundLevelState)
+    return;
+  laserSoundLevelState=level;
+  if(laserOscGainNode&&audioCtx){
+    laserOscGainNode.gain.setTargetAtTime(
+      level,audioCtx.currentTime,.03
+    );
+  }
+}
+function showLaserBeam(origin,endPoint){
+  const seg=
+    new THREE.Vector3()
+      .subVectors(endPoint,origin);
+  const len=Math.max(.01,seg.length());
+  const mid=
+    origin.clone()
+      .add(seg.clone().multiplyScalar(.5));
+  const quat=
+    new THREE.Quaternion()
+      .setFromUnitVectors(
+        _upAxis,
+        seg.clone().normalize()
+      );
+  laserBeamMesh.position.copy(mid);
+  laserBeamMesh.quaternion.copy(quat);
+  laserBeamMesh.scale.set(1,len,1);
+  laserBeamMesh.visible=true;
+  laserCoreMesh.position.copy(mid);
+  laserCoreMesh.quaternion.copy(quat);
+  laserCoreMesh.scale.set(1,len,1);
+  laserCoreMesh.visible=true;
+  laserHitGlow.position.copy(endPoint);
+  laserHitGlow.visible=true;
+}
+const _upAxis=new THREE.Vector3(0,1,0);
+function updateCheatLaser(dt){
+  const origin=camera.position.clone();
+  const dir=new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  raycaster.set(origin,dir);
+  let wallDist=Infinity;
+  let hitWall=null;
+  let wallHitPoint=null;
+  for(const w of walls){
+    if(w.broken)
+      continue;
+    const box=
+      new THREE.Box3()
+        .setFromObject(w.mesh);
+    const hit=
+      raycaster.ray.intersectBox(
+        box,new THREE.Vector3()
+      );
+    if(hit){
+      const d=origin.distanceTo(hit);
+      if(d<wallDist){
+        wallDist=d;
+        hitWall=w;
+        wallHitPoint=hit.clone();
+      }
+    }
+  }
+  let closestEnemy=null;
+  let closestDist=Infinity;
+  let closestIsHead=false;
+  const bodyRadius=.42;
+  const headMinY=1.68;
+  const headMaxY=2.45;
+  for(const en of enemies){
+    if(en.dead)
+      continue;
+    const denom=dir.x*dir.x+dir.z*dir.z;
+    if(denom<1e-6)
+      continue;
+    const t=
+      ((en.x-origin.x)*dir.x+(en.z-origin.z)*dir.z)/denom;
+    if(t<0||t>player.range)
+      continue;
+    const hitX=origin.x+dir.x*t;
+    const hitY=origin.y+dir.y*t;
+    const hitZ=origin.z+dir.z*t;
+    const horizDist=
+      Math.hypot(hitX-en.x,hitZ-en.z);
+    if(horizDist<bodyRadius&&t<closestDist){
+      closestDist=t;
+      closestEnemy=en;
+      closestIsHead=hitY>=headMinY&&hitY<=headMaxY;
+    }
+  }
+  let endDistance=player.range;
+  if(wallDist<endDistance)
+    endDistance=wallDist;
+  if(closestEnemy&&closestDist<endDistance)
+    endDistance=closestDist;
+  const endPoint=
+    origin.clone()
+      .add(dir.clone().multiplyScalar(endDistance));
+  showLaserBeam(origin,endPoint);
+  if(
+    closestEnemy&&
+    (wallDist===Infinity||closestDist<wallDist)
+  ){
+    /*
+      Flat per-second damage, with only a modest (not
+      instant-kill) headshot bonus — see the comment on
+      activateSecretCheat() for why headshots don't insta-kill
+      here. Sustained beam contact is what kills, not the
+      instant the beam crosses the head hitbox.
+    */
+    const dmgThisTick=
+      player.weaponDmg*dt*(closestIsHead?1.6:1);
+    closestEnemy.hp-=dmgThisTick;
+    if(closestIsHead&&Math.random()<.3){
+      spawnGlowParticle(
+        endPoint,0xff3a30,.4,.1
+      );
+    }
+    if(
+      closestEnemy.hp<=0&&
+      !closestEnemy.dead
+    ){
+      closestEnemy.dead=true;
+      scene.remove(closestEnemy.group);
+      score+=closestIsHead?150:100;
+      addTokens(10);
+      if(closestIsHead){
+        showMsg('HEADSHOT',700);
+      }
+      triggerFinisher(endPoint);
+      checkEliminationWin();
+    }
+  }
+  else if(
+    hitWall&&
+    wallDist<player.range&&
+    wallHitPoint&&
+    Math.random()<.25
+  ){
+    const wallDmg=
+      Math.max(.3,player.weaponDmg*dt/6);
+    hitWall.hp-=wallDmg;
+    if(
+      hitWall.hp<=0&&
+      !hitWall.broken
+    ){
+      destroyWall(hitWall);
+    }
+  }
 }
 function buildMenu(){
   const grid=
@@ -6738,12 +8020,26 @@ function buildMapMenu(){
   see makeBot()) so the two systems don't fight each other.
 */
 const OPERATOR_SKINS=[
-  {id:'tactical',name:'TACTICAL',base:0x151719,panel:0x242628,trim:0x111313},
-  {id:'desert',name:'DESERT',base:0x9c8a63,panel:0x7d6d4c,trim:0x5f5238},
-  {id:'arctic',name:'ARCTIC',base:0xd8dde0,panel:0xb7bec2,trim:0x8a9094},
-  {id:'woodland',name:'WOODLAND',base:0x4a5a3a,panel:0x3a4630,trim:0x2a3322},
-  {id:'crimson',name:'CRIMSON',base:0x6e1f1f,panel:0x4a1414,trim:0x2a0c0c},
-  {id:'gold',name:'GOLD RUSH',base:0xc9a227,panel:0xa3831c,trim:0x6b5510}
+  {id:'tactical',name:'TACTICAL',base:0x151719,panel:0x242628,trim:0x111313,metalness:.82,roughness:.3},
+  {id:'desert',name:'DESERT',base:0x9c8a63,panel:0x7d6d4c,trim:0x5f5238,metalness:.4,roughness:.55},
+  {id:'arctic',name:'ARCTIC',base:0xd8dde0,panel:0xb7bec2,trim:0x8a9094,metalness:.3,roughness:.4},
+  {id:'woodland',name:'WOODLAND',base:0x4a5a3a,panel:0x3a4630,trim:0x2a3322,metalness:.35,roughness:.6},
+  {id:'crimson',name:'CRIMSON',base:0x6e1f1f,panel:0x4a1414,trim:0x2a0c0c,metalness:.6,roughness:.28},
+  {
+    id:'gold',name:'GOLD RUSH',base:0xc9a227,panel:0xa3831c,trim:0x6b5510,
+    metalness:.92,roughness:.16,
+    trimEmissive:0xffd54a,trimEmissiveIntensity:.55
+  },
+  {
+    id:'shadow',name:'SHADOW OPS',base:0x0a0a0d,panel:0x141417,trim:0x2a8fff,
+    metalness:.7,roughness:.32,
+    trimEmissive:0x2a8fff,trimEmissiveIntensity:.85
+  },
+  {
+    id:'inferno',name:'INFERNO',base:0x241010,panel:0x361714,trim:0xff5020,
+    metalness:.55,roughness:.35,
+    trimEmissive:0xff4010,trimEmissiveIntensity:.9
+  }
 ];
 let selectedSkinIndex=0;
 function buildSkinMenu(){
@@ -6823,6 +8119,8 @@ document
     document
       .getElementById('menuScreen')
       .style.display='none';
+    stopLobbyMusic();
+    playUiClick();
     resetRound();
     canvasEl.requestPointerLock();
   });
@@ -6833,6 +8131,8 @@ buildMenu();
 buildSkinMenu();
 buildMapMenu();
 buildSideMenu();
+updateTokenHud();
+renderShop();
 loadLevel(0);
 updateHud();
 requestAnimationFrame(update);
