@@ -5169,6 +5169,9 @@ function botFireAt(shooter,target){
       );
       if(bossFight){
         bossLives--;
+        if(bossEnemy){
+          bossCarryHp=bossEnemy.hp;
+        }
         if(bossLives>0){
           setTimeout(
             showBossLifeOverlay,
@@ -7560,7 +7563,7 @@ const BOSS_OPERATOR={
   name:'JUGGERNAUT PRIME',
   role:'BOSS',
   accent:'#ff2a20',
-  maxHp:1100,
+  maxHp:2200,
   speedMul:.6,
   weapon:{
     name:'HX-AUTOCANNON',
@@ -7583,6 +7586,16 @@ const BOSS_OPERATOR={
 };
 let bossFight=false;
 let bossEnemy=null;
+/*
+  Carries the boss's HP forward from one life to the next —
+  losing a life resets the arena/player but NOT the boss's
+  progress, so the fight before the death still counts. Set to
+  null on a brand new boss fight (full HP) and captured off the
+  outgoing boss right when a life is lost (see the death-
+  handling block above), then consumed (and cleared back to
+  null) the next time spawnBossEncounter() builds a boss.
+*/
+let bossCarryHp=null;
 function spawnBossEncounter(){
   enemies.forEach(e=>scene.remove(e.group));
   allies.forEach(a=>scene.remove(a.group));
@@ -7615,7 +7628,10 @@ function spawnBossEncounter(){
     r:.85,
     team:'attack',
     op:BOSS_OPERATOR,
-    hp:BOSS_OPERATOR.maxHp,
+    hp:
+      bossCarryHp!==null
+      ?Math.min(bossCarryHp,BOSS_OPERATOR.maxHp)
+      :BOSS_OPERATOR.maxHp,
     maxHp:BOSS_OPERATOR.maxHp,
     speed:5.2*BOSS_OPERATOR.speedMul,
     weaponDmg:BOSS_OPERATOR.weapon.dmg,
@@ -7640,6 +7656,7 @@ function spawnBossEncounter(){
   };
   enemies.push(boss);
   bossEnemy=boss;
+  bossCarryHp=null;
 }
 function showBossHud(){
   document.getElementById('bossNameVal').textContent=
@@ -7701,6 +7718,7 @@ function beginBossRound(){
 function startBossFight(){
   bossFight=true;
   bossLives=BOSS_MAX_LIVES;
+  bossCarryHp=null;
   round=1;
   matchWins=0;
   matchLosses=0;
