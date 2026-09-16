@@ -4250,10 +4250,21 @@ function ensureAudio(){
     return;
   audioCtx=new Ctx();
   masterGain=audioCtx.createGain();
-  masterGain.gain.value=.9;
-  masterGain.connect(audioCtx.destination);
+  masterGain.gain.value=.85;
+  const masterComp=audioCtx.createDynamicsCompressor();
+  masterComp.threshold.value=-22;
+  masterComp.knee.value=24;
+  masterComp.ratio.value=8;
+  masterComp.attack.value=.003;
+  masterComp.release.value=.22;
+  const masterTone=audioCtx.createBiquadFilter();
+  masterTone.type='lowpass';
+  masterTone.frequency.value=7200;
+  masterGain.connect(masterTone);
+  masterTone.connect(masterComp);
+  masterComp.connect(audioCtx.destination);
   sfxGain=audioCtx.createGain();
-  sfxGain.gain.value=.85;
+  sfxGain.gain.value=.78;
   sfxGain.connect(masterGain);
   musicGain=audioCtx.createGain();
   musicGain.gain.value=0;
@@ -4292,12 +4303,12 @@ function noiseBuffer(duration){
   (0-1) fades bot gunfire heard at a distance from the player.
 */
 const WEAPON_SOUND_PARAMS={
-  rifle:{freq:1150,dur:.09,tone:170,toneDur:.09,gain:.55},
-  smg:{freq:1700,dur:.055,tone:280,toneDur:.05,gain:.32},
-  smg_silenced:{freq:2200,dur:.04,tone:320,toneDur:.035,gain:.16},
-  shotgun:{freq:650,dur:.17,tone:85,toneDur:.15,gain:.75},
-  dmr:{freq:950,dur:.15,tone:130,toneDur:.18,gain:.65},
-  burst:{freq:1300,dur:.075,tone:220,toneDur:.065,gain:.4}
+  rifle:{freq:1000,dur:.09,tone:160,toneDur:.09,gain:.4},
+  smg:{freq:1450,dur:.055,tone:260,toneDur:.05,gain:.24},
+  smg_silenced:{freq:1900,dur:.04,tone:300,toneDur:.035,gain:.12},
+  shotgun:{freq:550,dur:.17,tone:80,toneDur:.15,gain:.52},
+  dmr:{freq:820,dur:.15,tone:120,toneDur:.18,gain:.46},
+  burst:{freq:1100,dur:.075,tone:210,toneDur:.065,gain:.3}
 };
 function weaponSoundType(op){
   if(!op)
@@ -4330,11 +4341,14 @@ function playGunfire(op,distance){
   const filt=audioCtx.createBiquadFilter();
   filt.type='bandpass';
   filt.frequency.value=p.freq;
-  filt.Q.value=.8;
+  filt.Q.value=.55;
+  const crackTone=audioCtx.createBiquadFilter();
+  crackTone.type='lowpass';
+  crackTone.frequency.value=3800;
   const noiseGain=audioCtx.createGain();
   noiseGain.gain.setValueAtTime(p.gain*atten,t);
   noiseGain.gain.exponentialRampToValueAtTime(.001,t+p.dur);
-  noise.connect(filt).connect(noiseGain).connect(sfxGain);
+  noise.connect(filt).connect(crackTone).connect(noiseGain).connect(sfxGain);
   noise.start(t);
   noise.stop(t+p.dur+.03);
   const osc=audioCtx.createOscillator();
@@ -4344,7 +4358,7 @@ function playGunfire(op,distance){
     p.tone*.5,t+p.toneDur
   );
   const oscGain=audioCtx.createGain();
-  oscGain.gain.setValueAtTime(p.gain*.8*atten,t);
+  oscGain.gain.setValueAtTime(p.gain*.7*atten,t);
   oscGain.gain.exponentialRampToValueAtTime(.001,t+p.toneDur);
   osc.connect(oscGain).connect(sfxGain);
   osc.start(t);
@@ -4357,13 +4371,16 @@ function playReloadSound(){
   const t=audioCtx.currentTime;
   [0,.09].forEach((delay,i)=>{
     const osc=audioCtx.createOscillator();
-    osc.type='square';
-    osc.frequency.value=i===0?420:620;
+    osc.type='triangle';
+    osc.frequency.value=i===0?380:560;
+    const tone=audioCtx.createBiquadFilter();
+    tone.type='lowpass';
+    tone.frequency.value=2200;
     const g=audioCtx.createGain();
     g.gain.setValueAtTime(.001,t+delay);
-    g.gain.linearRampToValueAtTime(.18,t+delay+.005);
+    g.gain.linearRampToValueAtTime(.14,t+delay+.005);
     g.gain.exponentialRampToValueAtTime(.001,t+delay+.06);
-    osc.connect(g).connect(sfxGain);
+    osc.connect(tone).connect(g).connect(sfxGain);
     osc.start(t+delay);
     osc.stop(t+delay+.08);
   });
@@ -4374,15 +4391,18 @@ function playHitmarker(headshot){
     return;
   const t=audioCtx.currentTime;
   const osc=audioCtx.createOscillator();
-  osc.type='square';
-  osc.frequency.setValueAtTime(headshot?1400:900,t);
+  osc.type='triangle';
+  osc.frequency.setValueAtTime(headshot?1300:850,t);
   osc.frequency.exponentialRampToValueAtTime(
-    headshot?900:600,t+.05
+    headshot?850:560,t+.05
   );
+  const tone=audioCtx.createBiquadFilter();
+  tone.type='lowpass';
+  tone.frequency.value=headshot?3200:2400;
   const g=audioCtx.createGain();
-  g.gain.setValueAtTime(.22,t);
+  g.gain.setValueAtTime(.17,t);
   g.gain.exponentialRampToValueAtTime(.001,t+.09);
-  osc.connect(g).connect(sfxGain);
+  osc.connect(tone).connect(g).connect(sfxGain);
   osc.start(t);
   osc.stop(t+.1);
 }
@@ -4395,11 +4415,16 @@ function playAbilitySound(){
   osc.type='sawtooth';
   osc.frequency.setValueAtTime(160,t);
   osc.frequency.linearRampToValueAtTime(520,t+.3);
+  const tone=audioCtx.createBiquadFilter();
+  tone.type='lowpass';
+  tone.frequency.setValueAtTime(1200,t);
+  tone.frequency.linearRampToValueAtTime(2600,t+.3);
+  tone.Q.value=.4;
   const g=audioCtx.createGain();
   g.gain.setValueAtTime(.001,t);
-  g.gain.linearRampToValueAtTime(.22,t+.05);
+  g.gain.linearRampToValueAtTime(.16,t+.05);
   g.gain.exponentialRampToValueAtTime(.001,t+.32);
-  osc.connect(g).connect(sfxGain);
+  osc.connect(tone).connect(g).connect(sfxGain);
   osc.start(t);
   osc.stop(t+.34);
 }
@@ -4465,7 +4490,7 @@ function playFinisherSound(type){
     filt.type='highpass';
     filt.frequency.value=1800;
     const g=audioCtx.createGain();
-    g.gain.setValueAtTime(.5,t);
+    g.gain.setValueAtTime(.32,t);
     g.gain.exponentialRampToValueAtTime(.001,t+.15);
     noise.connect(filt).connect(g).connect(sfxGain);
     noise.start(t);
@@ -6692,7 +6717,7 @@ function update(){
   }
   if(mouseDown&&inputActive&&player.hp>0){
     if(player.cheatActive){
-      setLaserSoundLevel(.24);
+      setLaserSoundLevel(.12);
       updateCheatLaser(dt);
     }
     else{
@@ -7783,27 +7808,47 @@ function hideLaserVisuals(){
   safe to call from every firing frame.
 */
 let laserOscNode=null;
+let laserOscNode2=null;
 let laserOscGainNode=null;
+let laserToneNode=null;
 let laserLfoNode=null;
 let laserSoundLevelState=0;
 function ensureLaserOsc(){
   ensureAudio();
   if(!audioCtx||laserOscNode)
     return;
+  /*
+    Two gently-detuned triangle oscillators (a soft, non-buzzy
+    waveform) beating against each other give a smooth energy-hum
+    without the harsh odd-harmonic buzz of a raw sawtooth/square.
+    A slow, shallow LFO adds a light vibrato (a few Hz of wobble,
+    not the old +/-40Hz siren-style warble) and a lowpass tames
+    any remaining high-frequency edge.
+  */
   laserOscNode=audioCtx.createOscillator();
-  laserOscNode.type='sawtooth';
-  laserOscNode.frequency.value=520;
+  laserOscNode.type='triangle';
+  laserOscNode.frequency.value=310;
+  laserOscNode2=audioCtx.createOscillator();
+  laserOscNode2.type='triangle';
+  laserOscNode2.frequency.value=316;
   laserLfoNode=audioCtx.createOscillator();
-  laserLfoNode.frequency.value=14;
+  laserLfoNode.frequency.value=5.5;
   const lfoGain=audioCtx.createGain();
-  lfoGain.gain.value=40;
+  lfoGain.gain.value=4;
   laserLfoNode
     .connect(lfoGain)
     .connect(laserOscNode.frequency);
+  laserToneNode=audioCtx.createBiquadFilter();
+  laserToneNode.type='lowpass';
+  laserToneNode.frequency.value=1400;
+  laserToneNode.Q.value=.5;
   laserOscGainNode=audioCtx.createGain();
   laserOscGainNode.gain.value=0;
-  laserOscNode.connect(laserOscGainNode).connect(sfxGain);
+  laserOscNode.connect(laserToneNode);
+  laserOscNode2.connect(laserToneNode);
+  laserToneNode.connect(laserOscGainNode).connect(sfxGain);
   laserOscNode.start();
+  laserOscNode2.start();
   laserLfoNode.start();
 }
 function setLaserSoundLevel(level){
