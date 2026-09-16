@@ -602,6 +602,13 @@ canvas{
   background:linear-gradient(90deg,#ff2a2a,#ff8a3a);
   transition:width .15s ease;
 }
+#bossHud .bossLivesRow{
+  margin-top:6px;
+  font-size:13px;
+  letter-spacing:3px;
+  color:#ff9a7a;
+  text-shadow:0 2px 6px rgba(0,0,0,.85);
+}
 #spectateHud{
   position:fixed;
   bottom:60px;
@@ -909,6 +916,16 @@ canvas{
 </head>
 <body>
 <div id="secretCheatBtn" onclick="activateSecretCheat()" style="position:fixed;left:0;bottom:0;width:44px;height:44px;opacity:0;z-index:99999;cursor:default;background:transparent;border:none;padding:0;margin:0;"></div>
+<div id="bossLifeOverlay" style="display:none;position:fixed;inset:0;background:rgba(10,4,4,.9);z-index:150000;font-family:inherit;">
+  <div style="max-width:860px;margin:6vh auto;background:#150f0f;border:1px solid #4a2424;border-radius:10px;padding:26px 28px 30px;max-height:88vh;overflow-y:auto;text-align:center;">
+    <h2 id="bossLifeTitle" style="margin:0 0 6px;color:#ff6a4a;letter-spacing:.05em;font-size:20px;">ELIMINATED — 2 LIVES REMAINING</h2>
+    <p style="color:#9a8a86;font-size:12px;margin:2px 0 20px;">
+      Change your operator before you re-enter the arena. The boss, map and side stay as they are — only your loadout can change between lives.
+    </p>
+    <div id="bossLifeOperatorGrid" style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;max-width:900px;margin:0 auto 22px;"></div>
+    <button id="bossLifeContinueBtn" style="padding:12px 34px;background:#c9d94a;color:#0c0f0a;border:none;font-family:inherit;font-weight:bold;letter-spacing:2px;font-size:14px;cursor:pointer;">RE-ENTER ARENA</button>
+  </div>
+</div>
 <div id="shopOverlay" style="display:none;position:fixed;inset:0;background:rgba(6,8,6,.86);z-index:150000;font-family:inherit;">
   <div style="max-width:820px;margin:5vh auto;background:#11150f;border:1px solid #2a3524;border-radius:10px;padding:24px 28px 30px;max-height:88vh;overflow-y:auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
@@ -1036,10 +1053,13 @@ canvas{
       <i id="hpBar"></i>
     </div>
   </div>
-  <div>
-    ROUND <span id="roundVal">1</span> (BO3)
+  <div id="spawnShieldHud" style="display:none;color:#7fd8ff;">
+    SPAWN PROTECTED <span id="spawnShieldVal">2s</span>
   </div>
-  <div>
+  <div id="roundRow">
+    ROUND <span id="roundVal">1</span> <span id="roundSuffix">(BO3)</span>
+  </div>
+  <div id="matchRow">
     MATCH <span id="matchScoreVal">0-0</span>
   </div>
   <div>
@@ -1048,13 +1068,13 @@ canvas{
   <div>
     OPERATOR <span id="operatorVal">-</span>
   </div>
-  <div>
+  <div id="timeRow">
     TIME <span id="timeVal">120</span>s
   </div>
   <div>
     ENEMIES LEFT <span id="enemyVal">5</span>
   </div>
-  <div>
+  <div id="allyRow">
     ALLIES LEFT <span id="allyVal">4</span>
   </div>
   <div>
@@ -1087,6 +1107,7 @@ canvas{
 <div id="bossHud">
   <div class="bossName" id="bossNameVal">JUGGERNAUT PRIME</div>
   <div class="bossBarTrack"><div class="bossBarFill" id="bossBarFill"></div></div>
+  <div class="bossLivesRow" id="bossLivesVal">LIVES: 3</div>
 </div>
 <div id="spectateHud">ELIMINATED — SPECTATING &middot; YOUR TEAM IS STILL FIGHTING</div>
 <div id="detonate">
@@ -3478,8 +3499,10 @@ const player={
   recoilYaw:0,
   recoilKick:0,
   tilt:0,
-  team:'attack'
+  team:'attack',
+  spawnGrace:0
 };
+const SPAWN_GRACE_DURATION=2.2;
 camera.position.set(
   player.x,
   player.height,
@@ -3749,6 +3772,12 @@ function updateHud(){
         player.hp/player.maxHp
       )
     )*120+'px';
+  document.getElementById('spawnShieldHud').style.display=
+    player.spawnGrace>0?'block':'none';
+  if(player.spawnGrace>0){
+    document.getElementById('spawnShieldVal').textContent=
+      Math.ceil(player.spawnGrace)+'s';
+  }
   document.getElementById('roundVal').textContent=round;
   document.getElementById('matchScoreVal').textContent=
     matchWins+'-'+matchLosses;
@@ -4659,9 +4688,6 @@ function fireWeaponRay(origin,dir){
   let closestEnemy=null;
   let closestDist=Infinity;
   let closestIsHead=false;
-  const bodyRadius=.42;
-  const headMinY=1.68;
-  const headMaxY=2.45;
   for(
     const en of enemies
   ){
@@ -4672,8 +4698,22 @@ function fireWeaponRay(origin,dir){
       (en.x,en.z). Find where the shot ray passes
       closest to that column (in the XZ plane),
       then classify the exact vertical hit point as
-      a head hit (instant kill) or a body hit.
+      a head hit (instant kill) or a body hit. The
+      hit-window scales with the target's own model
+      scale (group.scale.y) — plain bots are scale 1
+      so this is exactly the old fixed window for
+      them, but the boss (scaled up ~1.7x, see
+      spawnBossEncounter()) needs its head window
+      raised and widened to match, otherwise its
+      actual (much higher) head sits outside the old
+      fixed range while its CHEST falls inside it —
+      registering chest shots as headshots.
     */
+    const scale=
+      (en.group&&en.group.scale&&en.group.scale.y)||1;
+    const bodyRadius=.42*scale;
+    const headMinY=1.68*scale;
+    const headMaxY=2.45*scale;
     const denom=
       dir.x*dir.x+
       dir.z*dir.z;
@@ -4739,7 +4779,11 @@ function fireWeaponRay(origin,dir){
       closestDist<wallDist
     )
   ){
-    if(closestIsHead&&!player.cheatActive){
+    if(
+      closestIsHead&&
+      !player.cheatActive&&
+      !closestEnemy.isBoss
+    ){
       /*
         Instant headshot kill — suppressed while the secret
         cheat is active (see activateSecretCheat()). The
@@ -4747,9 +4791,16 @@ function fireWeaponRay(origin,dir){
         letting a headshot still insta-kill the moment the
         beam merely touches the head hitbox would make that
         "keep the beam on target" mechanic pointless. Regular
-        weapons are unaffected.
+        weapons are unaffected. Also suppressed for the boss —
+        a one-shot kill would skip the whole point of a boss
+        fight, so a boss headshot instead does solid bonus
+        damage (mirrors the cheat laser's own headshot
+        multiplier below) rather than an instant kill.
       */
       closestEnemy.hp=0;
+    }
+    else if(closestIsHead){
+      closestEnemy.hp-=player.weaponDmg*1.6;
     }
     else{
       closestEnemy.hp-=player.weaponDmg;
@@ -5094,6 +5145,8 @@ function botFireAt(shooter,target){
     ?9999
     :shooter.weaponDmg;
   if(isPlayer){
+    if(player.spawnGrace>0)
+      return;
     const wasAlive=player.hp>0;
     player.hp-=dmg;
     document
@@ -5115,10 +5168,22 @@ function botFireAt(shooter,target){
         shooter.op?shooter.op.name:''
       );
       if(bossFight){
-        setTimeout(
-          bossDefeat,
-          killCam.duration*1000+300
-        );
+        bossLives--;
+        if(bossLives>0){
+          setTimeout(
+            showBossLifeOverlay,
+            killCam.duration*1000+300
+          );
+        }
+        else{
+          setTimeout(
+            bossDefeat,
+            killCam.duration*1000+300
+          );
+        }
+      }
+      else{
+        checkFriendlyWipe();
       }
     }
   }
@@ -5133,6 +5198,9 @@ function botFireAt(shooter,target){
       if(target.team!==player.team){
         score+=100;
         checkEliminationWin();
+      }
+      else{
+        checkFriendlyWipe();
       }
     }
   }
@@ -5535,6 +5603,38 @@ function checkEliminationWin(){
   }
   else{
     winRound(
+      'ALL DEFENDERS ELIMINATED — ATTACK WINS'
+    );
+  }
+}
+/*
+  FRIENDLY WIPE — the mirror of checkEliminationWin() above,
+  checked from the other direction: if the PLAYER's own side
+  (the player plus every ally) is dead, the opposing side has
+  won by elimination too, and the round needs to end right
+  then instead of leaving the player stuck spectating forever
+  with no one left on their team to finish the job. Called
+  both when an ally dies (in case the player was already dead)
+  and when the player dies (in case every ally was already
+  dead) so whichever death happens last is the one that ends
+  the round.
+*/
+function checkFriendlyWipe(){
+  if(gameState!=='playing'||bossFight)
+    return;
+  if(player.hp>0)
+    return;
+  if(allies.length===0)
+    return;
+  if(!allies.every(a=>a.dead))
+    return;
+  if(player.team==='attack'){
+    loseRound(
+      'ALL ATTACKERS ELIMINATED — DEFENSE WINS'
+    );
+  }
+  else{
+    loseRound(
       'ALL DEFENDERS ELIMINATED — ATTACK WINS'
     );
   }
@@ -6230,6 +6330,15 @@ function resetRound(){
   player.hp=player.maxHp;
   player.ammo=player.maxAmmo;
   player.reloadCd=0;
+  /*
+    SPAWN PROTECTION — a short damage-immunity window right
+    after spawning/respawning so a bot (or the boss) that
+    already had a sightline on the spawn point can't drop the
+    player before they've even had a chance to move or react.
+    Ticked down in update() and checked at the very top of the
+    player-damage path in botFireAt().
+  */
+  player.spawnGrace=SPAWN_GRACE_DURATION;
   player.stance='standing';
   player.abilityCd=0;
   player.cloakTimer=0;
@@ -6443,7 +6552,8 @@ function update(){
     !locked ||
     gameState==='gameover' ||
     gameState==='victory' ||
-    gameState==='menu'
+    gameState==='menu' ||
+    gameState==='bosslife'
   ){
     killCam.active=false;
     renderer.render(
@@ -6463,6 +6573,10 @@ function update(){
     return;
   }
   if(gameState==='playing'){
+    if(player.spawnGrace>0){
+      player.spawnGrace=
+        Math.max(0,player.spawnGrace-dt);
+    }
     roundTime-=dt;
     if(roundTime<=0&&!bossFight){
       if(player.team==='attack'){
@@ -7446,7 +7560,7 @@ const BOSS_OPERATOR={
   name:'JUGGERNAUT PRIME',
   role:'BOSS',
   accent:'#ff2a20',
-  maxHp:2200,
+  maxHp:1100,
   speedMul:.6,
   weapon:{
     name:'HX-AUTOCANNON',
@@ -7542,14 +7656,38 @@ function updateBossHud(){
     Math.max(0,Math.min(1,bossEnemy.hp/bossEnemy.maxHp));
   document.getElementById('bossBarFill').style.width=
     (pct*100)+'%';
+  document.getElementById('bossLivesVal').textContent=
+    'LIVES: '+
+    '●'.repeat(Math.max(0,bossLives))+
+    '○'.repeat(Math.max(0,BOSS_MAX_LIVES-bossLives));
 }
-function startBossFight(){
-  bossFight=true;
-  round=1;
-  matchWins=0;
-  matchLosses=0;
-  score=0;
-  currentLevel=selectedMapIndex;
+/*
+  The regular match HUD rows for the best-of-3 score and the
+  round clock don't mean anything in a boss fight (there's no
+  match score, no timer) — hidden here rather than deleted so
+  a normal match's HUD is untouched. ROUND is repurposed to
+  count which life/attempt this is instead of a BO3 round.
+*/
+function setBossHudRowsVisible(isBoss){
+  document.getElementById('matchRow').style.display=
+    isBoss?'none':'block';
+  document.getElementById('timeRow').style.display=
+    isBoss?'none':'block';
+  document.getElementById('allyRow').style.display=
+    isBoss?'none':'block';
+  document.getElementById('roundSuffix').style.display=
+    isBoss?'none':'inline';
+}
+const BOSS_MAX_LIVES=3;
+let bossLives=BOSS_MAX_LIVES;
+/*
+  Sets up one attempt at the boss — called both for the very
+  first attempt (from startBossFight()) and again for every
+  attempt after a life is lost (from continueBossFight()), so
+  the boss and the arena are always fresh at the start of a
+  life while round/score/lives keep carrying over between them.
+*/
+function beginBossRound(){
   player.team='defense';
   resetRound();
   spawnBossEncounter();
@@ -7559,17 +7697,74 @@ function startBossFight(){
   roundTime=999999;
   showBossHud();
   updateBossHud();
+}
+function startBossFight(){
+  bossFight=true;
+  bossLives=BOSS_MAX_LIVES;
+  round=1;
+  matchWins=0;
+  matchLosses=0;
+  score=0;
+  currentLevel=selectedMapIndex;
+  setBossHudRowsVisible(true);
+  beginBossRound();
   showMsg(
     BOSS_OPERATOR.name+' HAS ENTERED THE ARENA',
     2600
   );
 }
+/*
+  BETWEEN-LIVES OPERATOR SWAP — shown after a life is lost but
+  before the boss fight is fully over. Deliberately limited to
+  ONLY the operator choice (reusing the same PLAYER_OPS grid as
+  the main menu, via buildOperatorGridInto()) — no map, skin or
+  side picker here, since those don't apply mid-encounter.
+  Freezes the whole simulation via the dedicated 'bosslife'
+  gameState (see the early-return at the top of update()) and
+  releases pointer lock so the overlay's cards are clickable.
+*/
+function showBossLifeOverlay(){
+  gameState='bosslife';
+  mouseDown=false;
+  setLaserSoundLevel(0);
+  if(document.pointerLockElement){
+    document.exitPointerLock();
+  }
+  document.getElementById('bossLifeTitle').textContent=
+    'ELIMINATED — '+
+    bossLives+(bossLives===1?' LIFE':' LIVES')+
+    ' REMAINING';
+  buildOperatorGridInto('bossLifeOperatorGrid');
+  document.getElementById('bossLifeOverlay').style.display='block';
+}
+function continueBossFight(){
+  document.getElementById('bossLifeOverlay').style.display='none';
+  gameState='playing';
+  round++;
+  beginBossRound();
+  showMsg(
+    BOSS_OPERATOR.name+' HAS ENTERED THE ARENA — '+
+    bossLives+(bossLives===1?' LIFE':' LIVES')+' LEFT',
+    2400
+  );
+  canvasEl.requestPointerLock();
+}
+document
+  .getElementById('bossLifeContinueBtn')
+  .addEventListener('click',()=>{
+    const op=
+      PLAYER_OPS[selectedOperatorIndex];
+    applyOperatorLoadout(op);
+    playUiClick();
+    continueBossFight();
+  });
 function bossVictory(){
   if(gameState==='victory')
     return;
   gameState='victory';
   bossFight=false;
   hideBossHud();
+  setBossHudRowsVisible(false);
   score+=800;
   addTokens(300);
   mouseDown=false;
@@ -7590,11 +7785,13 @@ function bossDefeat(){
   gameState='gameover';
   bossFight=false;
   hideBossHud();
+  setBossHudRowsVisible(false);
+  document.getElementById('bossLifeOverlay').style.display='none';
   document.getElementById('spectateHud').style.display='none';
   playRoundStinger(false);
   showMsg(
     'ELIMINATED BY '+BOSS_OPERATOR.name+
-    ' — PRESS R FOR OPERATOR SELECT',
+    ' — OUT OF LIVES — PRESS R FOR OPERATOR SELECT',
     999999
   );
 }
@@ -8093,12 +8290,20 @@ function updateCheatLaser(dt){
   let closestEnemy=null;
   let closestDist=Infinity;
   let closestIsHead=false;
-  const bodyRadius=.42;
-  const headMinY=1.68;
-  const headMaxY=2.45;
   for(const en of enemies){
     if(en.dead)
       continue;
+    /*
+      Same scale-aware head window as fireWeaponRay() — see
+      the comment there. Without it the boss's scaled-up chest
+      reads as a headshot instead of its actual (much higher)
+      head.
+    */
+    const scale=
+      (en.group&&en.group.scale&&en.group.scale.y)||1;
+    const bodyRadius=.42*scale;
+    const headMinY=1.68*scale;
+    const headMaxY=2.45*scale;
     const denom=dir.x*dir.x+dir.z*dir.z;
     if(denom<1e-6)
       continue;
@@ -8177,9 +8382,16 @@ function updateCheatLaser(dt){
     }
   }
 }
-function buildMenu(){
+/*
+  Shared by the main menu's operator grid AND the between-
+  boss-lives overlay's operator grid (see BOSS FIGHT section)
+  — both just render PLAYER_OPS against the current
+  selectedOperatorIndex into whichever container id is passed
+  in, so picking an operator in either place stays in sync.
+*/
+function buildOperatorGridInto(containerId){
   const grid=
-    document.getElementById('operatorGrid');
+    document.getElementById(containerId);
   grid.innerHTML='';
   PLAYER_OPS.forEach((op,i)=>{
     const card=
@@ -8204,6 +8416,9 @@ function buildMenu(){
     });
     grid.appendChild(card);
   });
+}
+function buildMenu(){
+  buildOperatorGridInto('operatorGrid');
 }
 let selectedMapIndex=0;
 function buildMapMenu(){
