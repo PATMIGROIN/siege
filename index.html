@@ -567,6 +567,41 @@ canvas{
   border:1px solid #2a4a6b;
   display:none;
 }
+#bossHud{
+  position:fixed;
+  top:18px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:7;
+  width:440px;
+  max-width:72vw;
+  text-align:center;
+  display:none;
+  pointer-events:none;
+}
+#bossHud .bossName{
+  font-size:15px;
+  font-weight:bold;
+  letter-spacing:3px;
+  color:#ff6a4a;
+  text-shadow:0 2px 6px rgba(0,0,0,.85);
+  margin-bottom:5px;
+}
+#bossHud .bossBarTrack{
+  width:100%;
+  height:15px;
+  background:rgba(20,8,8,.78);
+  border:1px solid #6b1f1f;
+  border-radius:3px;
+  overflow:hidden;
+  box-shadow:0 2px 12px rgba(0,0,0,.55);
+}
+#bossHud .bossBarFill{
+  height:100%;
+  width:100%;
+  background:linear-gradient(90deg,#ff2a2a,#ff8a3a);
+  transition:width .15s ease;
+}
 #spectateHud{
   position:fixed;
   bottom:60px;
@@ -825,6 +860,23 @@ canvas{
 #deployBtn:hover{
   background:#e0f05f;
 }
+#bossFightBtn{
+  padding:11px 34px;
+  background:#241214;
+  color:#ff7a5a;
+  border:1px solid #6b1f1f;
+  font-family:inherit;
+  font-weight:bold;
+  letter-spacing:2px;
+  font-size:13px;
+  cursor:pointer;
+  margin-top:10px;
+}
+#bossFightBtn:hover{
+  background:#3a1a1c;
+  color:#ff9a72;
+  box-shadow:0 0 12px rgba(255,60,30,.35);
+}
 #hint{
   font-size:11px;
   color:#666;
@@ -857,17 +909,6 @@ canvas{
 </head>
 <body>
 <div id="secretCheatBtn" onclick="activateSecretCheat()" style="position:fixed;left:0;bottom:0;width:44px;height:44px;opacity:0;z-index:99999;cursor:default;background:transparent;border:none;padding:0;margin:0;"></div>
-<button id="bossKeyBtn" onclick="toggleBossKey()" title="Instantly hide the game (F9)" style="position:fixed;top:8px;right:8px;z-index:99998;font:11px system-ui,sans-serif;background:rgba(20,22,20,.55);color:#9aa89a;border:1px solid rgba(255,255,255,.15);border-radius:4px;padding:4px 8px;cursor:pointer;letter-spacing:.03em;">&#128193; BOSS KEY (F9)</button>
-<div id="bossKeyOverlay" onclick="toggleBossKey()" style="display:none;position:fixed;inset:0;background:#e9ebee;z-index:200000;font-family:Calibri,'Segoe UI',Arial,sans-serif;color:#1a1a1a;">
-  <div style="background:linear-gradient(#fbfbfc,#eceef1);border-bottom:1px solid #c7cbd1;padding:7px 12px;font-size:13px;display:flex;justify-content:space-between;">
-    <span>Quarterly_Budget_Review_FINAL_v3.xlsx &mdash; Saved</span>
-    <span style="color:#5a6472;">AutoSave &#9679; ON</span>
-  </div>
-  <div style="background:#f6f7f8;border-bottom:1px solid #d7dbe0;padding:5px 12px;font-size:12px;color:#444;">
-    File &nbsp; Home &nbsp; Insert &nbsp; Page Layout &nbsp; Formulas &nbsp; Data &nbsp; Review &nbsp; View
-  </div>
-  <div id="bossKeyGrid" style="overflow:hidden;"></div>
-</div>
 <div id="shopOverlay" style="display:none;position:fixed;inset:0;background:rgba(6,8,6,.86);z-index:150000;font-family:inherit;">
   <div style="max-width:820px;margin:5vh auto;background:#11150f;border:1px solid #2a3524;border-radius:10px;padding:24px 28px 30px;max-height:88vh;overflow-y:auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
@@ -910,6 +951,7 @@ canvas{
       <b>SHIFT</b> SPRINT &middot; <b>C</b> TOGGLE CROUCH &middot; <b>CTRL</b> TOGGLE CRAWL &middot; <b>R</b> RELOAD &middot; <b>Q/E</b> TOGGLE TILT
     </div>
     <button id="deployBtn">DEPLOY</button>
+    <button id="bossFightBtn">&#9760; BOSS FIGHT</button>
     <div id="hint">
       Mouse will lock to the window — press ESC anytime to release it.
     </div>
@@ -1042,6 +1084,10 @@ canvas{
 </div>
 <div id="intelHud"></div>
 <div id="cameraHud"></div>
+<div id="bossHud">
+  <div class="bossName" id="bossNameVal">JUGGERNAUT PRIME</div>
+  <div class="bossBarTrack"><div class="bossBarFill" id="bossBarFill"></div></div>
+</div>
 <div id="spectateHud">ELIMINATED — SPECTATING &middot; YOUR TEAM IS STILL FIGHTING</div>
 <div id="detonate">
   BOMB SITE ARMED
@@ -3748,6 +3794,7 @@ function updateHud(){
       ? Math.ceil(player.abilityCd)+'s'
       : 'READY';
   }
+  updateBossHud();
 }
 /* =========================================================
    BULLET TRACERS
@@ -4308,7 +4355,8 @@ const WEAPON_SOUND_PARAMS={
   smg_silenced:{freq:1900,dur:.04,tone:300,toneDur:.035,gain:.12},
   shotgun:{freq:550,dur:.17,tone:80,toneDur:.15,gain:.52},
   dmr:{freq:820,dur:.15,tone:120,toneDur:.18,gain:.46},
-  burst:{freq:1100,dur:.075,tone:210,toneDur:.065,gain:.3}
+  burst:{freq:1100,dur:.075,tone:210,toneDur:.065,gain:.3},
+  heavy:{freq:480,dur:.1,tone:70,toneDur:.12,gain:.5}
 };
 function weaponSoundType(op){
   if(!op)
@@ -4319,6 +4367,7 @@ function weaponSoundType(op){
     case 'vesper':return 'smg_silenced';
     case 'warden':return 'dmr';
     case 'ember':return 'burst';
+    case 'juggernaut':return 'heavy';
     default:return 'rifle';
   }
 }
@@ -5065,6 +5114,12 @@ function botFireAt(shooter,target){
         shooter.op?shooter.op.weapon.name:'',
         shooter.op?shooter.op.name:''
       );
+      if(bossFight){
+        setTimeout(
+          bossDefeat,
+          killCam.duration*1000+300
+        );
+      }
     }
   }
   else{
@@ -5463,6 +5518,10 @@ function checkEliminationWin(){
     return;
   if(!enemies.every(e=>e.dead))
     return;
+  if(bossFight){
+    bossVictory();
+    return;
+  }
   /*
     Wiping the enemy team is an instant round win for either
     side — the defenders don't need the clock to run out and
@@ -6405,7 +6464,7 @@ function update(){
   }
   if(gameState==='playing'){
     roundTime-=dt;
-    if(roundTime<=0){
+    if(roundTime<=0&&!bossFight){
       if(player.team==='attack'){
         loseRound(
           'TIME EXPIRED — BOMB SECURED, DEFENSE WINS'
@@ -6799,7 +6858,7 @@ function update(){
      defuse it; defenders simply have to keep them off it —
      there's no plant phase and nothing detonates.
   ===================================================== */
-  if(gameState==='playing'){
+  if(gameState==='playing'&&!bossFight){
     const attackBots=
       player.team==='attack'
       ?allies:enemies;
@@ -7016,7 +7075,8 @@ function update(){
   if(
     player.hp<=0 &&
     !hasShownSpectateMsg &&
-    gameState==='playing'
+    gameState==='playing' &&
+    !bossFight
   ){
     hasShownSpectateMsg=true;
     showMsg('ELIMINATED — SPECTATING',2200);
@@ -7028,7 +7088,8 @@ function update(){
   document.getElementById('spectateHud').style.display=
     (
       player.hp<=0 &&
-      gameState==='playing'
+      gameState==='playing' &&
+      !bossFight
     )?'block':'none';
   updateHud();
   renderer.render(
@@ -7369,76 +7430,188 @@ function activateSecretCheat(){
   showMsg('CHEAT ENGAGED — LASER ONLINE',1600);
 }
 /* =========================================================
-   BOSS KEY
-   A visible panic button (menu screen, top-right corner, and
-   the F9 hotkey work everywhere, not just from the menu,
-   since a boss key that only works before you've deployed
-   defeats the point). Instantly swaps the whole page for a
-   boring fake spreadsheet. Reuses the existing pause-on-
-   unlock behavior (see the `locked` gate at the top of
-   update()) so a round in progress just freezes rather than
-   continuing to play out unseen behind the overlay.
+   BOSS FIGHT
+   A standalone encounter, launched from the main menu, that
+   drops the player into a solo showdown against one massive,
+   heavily-armored operator — no allies, no bomb objective, no
+   round clock. Deliberately reuses as much of the existing
+   round machinery as possible (resetRound() for all the
+   camera/HUD/ammo resets, makeBot() for the boss's model and
+   AI, the normal damage/kill pipeline for hit detection) so it
+   inherits the same polish and bugfixes as the regular match
+   flow for free, rather than forking a parallel implementation.
 ========================================================= */
-function buildBossKeyGrid(){
-  const cols=['A','B','C','D','E','F','G','H','I','J'];
-  const labels=[
-    'Line Item','Q1','Q2','Q3','Q4','Variance','Owner','Status','Notes',''
-  ];
-  const rows=[
-    ['Facilities Lease','12,400','12,400','12,600','12,600','+200','R. Alvarez','On Track',''],
-    ['Cloud Infrastructure','8,120','8,940','9,300','9,120','-180','D. Chen','Review',''],
-    ['Headcount - Eng','142,000','148,500','151,200','155,000','+3,800','M. Osei','On Track',''],
-    ['Marketing Spend','21,300','19,800','22,100','24,000','+1,900','J. Park','On Track',''],
-    ['Travel & Events','4,410','2,980','5,120','6,040','+920','R. Alvarez','Over Budget',''],
-    ['Software Licensing','6,700','6,700','7,050','7,050','flat','D. Chen','On Track',''],
-    ['Contractor Fees','15,900','14,200','13,750','12,900','-850','M. Osei','On Track',''],
-    ['Office Supplies','1,120','980','1,040','1,010','-30','J. Park','On Track',''],
-    ['Training Budget','3,300','3,300','2,900','3,500','+600','R. Alvarez','On Track',''],
-    ['Misc / Contingency','2,000','1,450','1,780','1,620','-160','D. Chen','On Track','']
-  ];
-  let html=
-    '<table style="border-collapse:collapse;width:100%;font-size:12px;table-layout:fixed;">'+
-    '<tr><td style="width:26px;background:#eef0f2;border:1px solid #d7dbe0;"></td>'+
-    cols.map(c=>'<td style="background:#eef0f2;border:1px solid #d7dbe0;text-align:center;color:#555;padding:3px;">'+c+'</td>').join('')+
-    '</tr>';
-  html+=
-    '<tr><td style="background:#eef0f2;border:1px solid #d7dbe0;text-align:center;color:#555;">1</td>'+
-    labels.map(l=>'<td style="border:1px solid #d7dbe0;padding:3px 6px;font-weight:600;background:#f8f9fa;">'+l+'</td>').join('')+
-    '</tr>';
-  rows.forEach((r,i)=>{
-    html+=
-      '<tr><td style="background:#eef0f2;border:1px solid #d7dbe0;text-align:center;color:#555;">'+(i+2)+'</td>'+
-      r.map(v=>'<td style="border:1px solid #d7dbe0;padding:3px 6px;white-space:nowrap;overflow:hidden;">'+v+'</td>').join('')+
-      '</tr>';
+const BOSS_OPERATOR={
+  id:'juggernaut',
+  name:'JUGGERNAUT PRIME',
+  role:'BOSS',
+  accent:'#ff2a20',
+  maxHp:2200,
+  speedMul:.6,
+  weapon:{
+    name:'HX-AUTOCANNON',
+    dmg:18,
+    fireCd:.11,
+    mag:9999,
+    reload:.1,
+    pellets:1,
+    spread:.02,
+    range:70,
+    aimFov:60,
+    sight:'reflex',
+    recoil:{pitch:0,yaw:0}
+  },
+  ability:{
+    name:'NONE',
+    cooldown:9999,
+    desc:''
+  }
+};
+let bossFight=false;
+let bossEnemy=null;
+function spawnBossEncounter(){
+  enemies.forEach(e=>scene.remove(e.group));
+  allies.forEach(a=>scene.remove(a.group));
+  enemies=[];
+  allies=[];
+  const theme=getLevel();
+  const spawnPoint=theme.atkSpawn;
+  /*
+    Built directly with buildOperator() (the same function
+    makeBot() uses internally) rather than through makeBot()
+    itself, so the boss gets a fixed, always-robotic, always-
+    red-glowing identity instead of inheriting whichever team
+    palette / map-specific enemy type happens to be active —
+    it should look like the same boss no matter which map or
+    side was picked on the deploy screen.
+  */
+  const group=
+    buildOperator(0x181212,BOSS_OPERATOR.accent,'robotic');
+  group.position.set(
+    spawnPoint.x+(Math.random()*.8-.4),
+    0,
+    spawnPoint.z+(Math.random()*.8-.4)
+  );
+  group.scale.set(1.7,1.7,1.7);
+  scene.add(group);
+  const boss={
+    group,
+    x:group.position.x,
+    z:group.position.z,
+    r:.85,
+    team:'attack',
+    op:BOSS_OPERATOR,
+    hp:BOSS_OPERATOR.maxHp,
+    maxHp:BOSS_OPERATOR.maxHp,
+    speed:5.2*BOSS_OPERATOR.speedMul,
+    weaponDmg:BOSS_OPERATOR.weapon.dmg,
+    fireCdBase:BOSS_OPERATOR.weapon.fireCd,
+    range:BOSS_OPERATOR.weapon.range,
+    accuracyMul:1.2,
+    isBetter:true,
+    fireCd:0,
+    alert:false,
+    hadTarget:false,
+    dead:false,
+    isBot:true,
+    walkT:Math.random()*10,
+    escapeTimer:0,
+    escapeDir:Math.random()<.5?1:-1,
+    escapeHeading:0,
+    progressTimer:0,
+    lastProgressD:Infinity,
+    navTarget:null,
+    navRecalcT:0,
+    isBoss:true
+  };
+  enemies.push(boss);
+  bossEnemy=boss;
+}
+function showBossHud(){
+  document.getElementById('bossNameVal').textContent=
+    BOSS_OPERATOR.name;
+  document.getElementById('bossHud').style.display='block';
+}
+function hideBossHud(){
+  document.getElementById('bossHud').style.display='none';
+}
+function updateBossHud(){
+  if(!bossFight||!bossEnemy)
+    return;
+  const pct=
+    Math.max(0,Math.min(1,bossEnemy.hp/bossEnemy.maxHp));
+  document.getElementById('bossBarFill').style.width=
+    (pct*100)+'%';
+}
+function startBossFight(){
+  bossFight=true;
+  round=1;
+  matchWins=0;
+  matchLosses=0;
+  score=0;
+  currentLevel=selectedMapIndex;
+  player.team='defense';
+  resetRound();
+  spawnBossEncounter();
+  hideBomb();
+  document.getElementById('detonate').style.display='none';
+  document.getElementById('spectateHud').style.display='none';
+  roundTime=999999;
+  showBossHud();
+  updateBossHud();
+  showMsg(
+    BOSS_OPERATOR.name+' HAS ENTERED THE ARENA',
+    2600
+  );
+}
+function bossVictory(){
+  if(gameState==='victory')
+    return;
+  gameState='victory';
+  bossFight=false;
+  hideBossHud();
+  score+=800;
+  addTokens(300);
+  mouseDown=false;
+  setLaserSoundLevel(0);
+  playRoundStinger(true);
+  showMsg(
+    BOSS_OPERATOR.name+' DEFEATED — PRESS R FOR OPERATOR SELECT ('+
+    '+300 TOKENS)',
+    999999
+  );
+}
+function bossDefeat(){
+  if(
+    gameState==='gameover'||
+    gameState==='victory'
+  )
+    return;
+  gameState='gameover';
+  bossFight=false;
+  hideBossHud();
+  document.getElementById('spectateHud').style.display='none';
+  playRoundStinger(false);
+  showMsg(
+    'ELIMINATED BY '+BOSS_OPERATOR.name+
+    ' — PRESS R FOR OPERATOR SELECT',
+    999999
+  );
+}
+document
+  .getElementById('bossFightBtn')
+  .addEventListener('click',()=>{
+    const op=
+      PLAYER_OPS[selectedOperatorIndex];
+    applyOperatorLoadout(op);
+    document
+      .getElementById('menuScreen')
+      .style.display='none';
+    stopLobbyMusic();
+    playUiClick();
+    startBossFight();
+    canvasEl.requestPointerLock();
   });
-  for(let i=0;i<12;i++){
-    html+=
-      '<tr><td style="background:#eef0f2;border:1px solid #d7dbe0;text-align:center;color:#555;">'+(rows.length+2+i)+'</td>'+
-      cols.map(()=>'<td style="border:1px solid #d7dbe0;padding:3px 6px;">&nbsp;</td>').join('')+
-      '</tr>';
-  }
-  html+='</table>';
-  document.getElementById('bossKeyGrid').innerHTML=html;
-}
-buildBossKeyGrid();
-let bossKeyActive=false;
-function toggleBossKey(){
-  bossKeyActive=!bossKeyActive;
-  document.getElementById('bossKeyOverlay').style.display=
-    bossKeyActive?'block':'none';
-  if(bossKeyActive){
-    mouseDown=false;
-    if(document.pointerLockElement){
-      document.exitPointerLock();
-    }
-  }
-}
-document.addEventListener('keydown',e=>{
-  if(e.key==='F9'){
-    e.preventDefault();
-    toggleBossKey();
-  }
-});
 /* =========================================================
    TOKENS — a persistent currency (localStorage-backed, so
    it survives a page reload) earned from kills and round/
