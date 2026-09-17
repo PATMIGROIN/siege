@@ -778,6 +778,31 @@ canvas{
   justify-content:center;
   margin-bottom:6px;
 }
+#diffGrid{
+  display:flex;
+  gap:10px;
+  justify-content:center;
+  margin-bottom:6px;
+}
+.diffChip{
+  padding:8px 20px;
+  border:1px solid #3a3f2a;
+  background:rgba(20,24,16,.85);
+  cursor:pointer;
+  font-size:12px;
+  font-weight:bold;
+  letter-spacing:2px;
+  color:#c9c9b0;
+  transition:border-color .15s, box-shadow .15s, color .15s;
+}
+.diffChip:hover{
+  color:#e8e6d8;
+}
+.diffChip.selected{
+  border-color:#7fd8ff;
+  color:#7fd8ff;
+  box-shadow:0 0 10px rgba(127,216,255,.3);
+}
 .sideChip{
   padding:8px 22px;
   border:1px solid #3a3f2a;
@@ -960,6 +985,8 @@ canvas{
   <div id="mapGrid"></div>
   <p class="menuSub" style="margin-top:22px;">SELECT SIDE</p>
   <div id="sideGrid"></div>
+  <p class="menuSub" style="margin-top:22px;">SELECT DIFFICULTY</p>
+  <div id="diffGrid"></div>
   <div id="menuFooter">
     <div id="controlsInfo">
       <b>WASD</b> MOVE &middot; <b>MOUSE</b> LOOK &middot; <b>CLICK</b> SHOOT &middot;
@@ -1647,7 +1674,8 @@ const levelThemes=[
       [0x303a3a,0x8a7030]
     ],
     atmo:{color:0xd9d9c0,size:.045,opacity:.32,speed:.12,drift:.05,fall:false},
-    atkSpawn:{x:-30,z:-6}
+    atkSpawn:{x:-30,z:-6},
+    upperFloor:{ax:-32,az:-30,hw:3,hd:3,platformH:3.4,stairLen:5}
   },
   {
     name:'URBAN RUINS',
@@ -1676,7 +1704,8 @@ const levelThemes=[
       [0x5a2a2a,0x2a1515]
     ],
     atmo:{color:0x9a8a7a,size:.05,opacity:.28,speed:.09,drift:.06,fall:false},
-    atkSpawn:{x:30,z:26}
+    atkSpawn:{x:30,z:26},
+    upperFloor:{ax:28,az:-30,hw:3,hd:3,platformH:3.4,stairLen:5}
   },
   {
     name:'INDUSTRIAL COMPLEX',
@@ -1705,7 +1734,8 @@ const levelThemes=[
       [0x1a2530,0x60c8ff]
     ],
     atmo:{color:0x60d0ff,size:.04,opacity:.4,speed:.28,drift:.04,fall:false},
-    atkSpawn:{x:0,z:-28}
+    atkSpawn:{x:0,z:-28},
+    upperFloor:{ax:-30,az:14,hw:3,hd:3,platformH:3.4,stairLen:5}
   },
   {
     name:'NIGHT OPS',
@@ -1858,6 +1888,50 @@ function getLevel(){
   return levelThemes[
     currentLevel%levelThemes.length
   ];
+}
+/*
+  UPPER FLOOR (PILOT) — a handful of maps (see theme.upperFloor,
+  and addElevatedPlatformDecor() near the decoration functions)
+  have a real elevated platform reachable by a single staircase.
+  Since there's no jump/fall physics in this game at all, "how
+  high off the ground is this XZ position" has to be a pure
+  function of position rather than simulated — this is that
+  function, and it's the ONLY place that knows about stairs vs.
+  platform vs. ground floor. Everything that needs a Y position
+  (the player's camera, every bot's model, the headshot hit
+  window) just calls this and adds the result.
+
+  It's deliberately impossible for this to jump discontinuously:
+  the platform's support is solid on 3 sides (real colliders —
+  see addElevatedPlatformDecor()), so the ONLY way to physically
+  reach the platform's own footprint is by first walking through
+  the staircase footprint immediately in front of it, and the
+  stair's height ramps smoothly from 0 up to platformH across
+  that exact span, meeting the platform's flat platformH exactly
+  at the seam. There's no "walk underneath and pop up" case,
+  because there's no way to be at that XZ from ground level at
+  all except via the ramp.
+*/
+function getGroundHeightAt(x,z){
+  const uf=getLevel().upperFloor;
+  if(!uf)
+    return 0;
+  if(
+    x>=uf.ax-uf.hw&&x<=uf.ax+uf.hw&&
+    z>=uf.az-uf.hd&&z<=uf.az+uf.hd
+  ){
+    return uf.platformH;
+  }
+  const stairZFar=uf.az-uf.hd-uf.stairLen;
+  const stairZNear=uf.az-uf.hd;
+  if(
+    x>=uf.ax-uf.hw&&x<=uf.ax+uf.hw&&
+    z>=stairZFar&&z<stairZNear
+  ){
+    const t=(z-stairZFar)/uf.stairLen;
+    return t*uf.platformH;
+  }
+  return 0;
 }
 /* =========================================================
    WALLS
@@ -2783,6 +2857,110 @@ function addDecorations(){
   const theme=getLevel();
   const fn=decorByLayout[theme.layout]||addDecorGreenzone;
   fn();
+  if(theme.upperFloor){
+    addElevatedPlatformDecor(theme);
+  }
+}
+/*
+  ELEVATED PLATFORM (PILOT) — builds the actual geometry for a
+  map with theme.upperFloor: the raised floor slab, 3 solid
+  support walls (north/east/west — real decoration colliders,
+  which also block line of sight, see lineOfSightBlocked()),
+  and a solid stepped staircase with invisible guard-rail
+  colliders along its sides, all up on the south side where the
+  wall is deliberately left open. See getGroundHeightAt() for
+  how the actual walkable height at any position is derived from
+  this same footprint.
+*/
+function addElevatedPlatformDecor(theme){
+  const uf=theme.upperFloor;
+  /*
+    Push the anchor clear of whatever's already built on this
+    map, same safety technique spawnSlot() uses for every bot/
+    player spawn point — a hardcoded corner coordinate can't be
+    verified against every layout's procedural walls by hand.
+  */
+  const anchor={x:uf.ax,z:uf.az};
+  for(let pass=0;pass<10;pass++){
+    resolveWallCollisionXZ(anchor,uf.hw+1.5);
+    resolveDecorationCollision(anchor,uf.hw+1.5);
+  }
+  uf.ax=anchor.x;
+  uf.az=anchor.z;
+  const ax=uf.ax,az=uf.az,hw=uf.hw,hd=uf.hd;
+  const platformH=uf.platformH,stairLen=uf.stairLen;
+  const thickness=.9;
+  const platMat=
+    new THREE.MeshStandardMaterial({
+      color:theme.wall,roughness:.75,metalness:.1
+    });
+  const trimMat=
+    new THREE.MeshStandardMaterial({
+      color:0x201e18,roughness:.6,metalness:.35
+    });
+  const slab=
+    new THREE.Mesh(
+      new THREE.BoxGeometry(hw*2,.3,hd*2),
+      platMat
+    );
+  slab.position.set(ax,platformH-.15,az);
+  scene.add(slab);
+  trackMesh(slab);
+  const lip=
+    new THREE.Mesh(
+      new THREE.BoxGeometry(hw*2+.3,.15,hd*2+.3),
+      trimMat
+    );
+  lip.position.set(ax,platformH-.02,az);
+  scene.add(lip);
+  trackMesh(lip);
+  function supportWall(cx,cz,w,d){
+    const mesh=
+      new THREE.Mesh(
+        new THREE.BoxGeometry(w,platformH,d),
+        trimMat
+      );
+    mesh.position.set(cx,platformH/2,cz);
+    scene.add(mesh);
+    trackMesh(mesh);
+    addCollider(cx,cz,w,d);
+  }
+  supportWall(ax,az+hd+thickness/2,hw*2+thickness*2,thickness);
+  supportWall(ax+hw+thickness/2,az,thickness,hd*2+thickness*2);
+  supportWall(ax-hw-thickness/2,az,thickness,hd*2+thickness*2);
+  /*
+    Solid stepped staircase — each step is a block reaching all
+    the way down to the ground (not a floating tread), so it
+    reads as a real staircase from every angle, not just from
+    the climbing side.
+  */
+  const STEPS=8;
+  const stepDepth=stairLen/STEPS;
+  const stepRise=platformH/STEPS;
+  const stairZFar=az-hd-stairLen;
+  for(let i=0;i<STEPS;i++){
+    const stepH=stepRise*(i+1);
+    const stepZ=stairZFar+(i+.5)*stepDepth;
+    const step=
+      new THREE.Mesh(
+        new THREE.BoxGeometry(hw*2,stepH,stepDepth+.02),
+        platMat
+      );
+    step.position.set(ax,stepH/2,stepZ);
+    scene.add(step);
+    trackMesh(step);
+  }
+  /*
+    Invisible guard-rail colliders along both sides of the
+    ramp — nothing but resolveDecorationCollision() ever sees
+    these, so there's no matching mesh. Without them a player
+    could strafe off the side mid-climb and have their walkable
+    height (see getGroundHeightAt()) snap back to 0 the instant
+    their X left the stair's footprint.
+  */
+  const stairMidZ=az-hd-stairLen/2;
+  addCollider(ax-hw-thickness/2,stairMidZ,thickness,stairLen);
+  addCollider(ax+hw+thickness/2,stairMidZ,thickness,stairLen);
 }
 addDecorations();
 /* =========================================================
@@ -3302,14 +3480,26 @@ function makeBot(pos,op,team,isBetter){
       op.accent||palette[1],
       theme.enemyType
     );
+  const spawnJx=pos.x+(Math.random()*.8-.4);
+  const spawnJz=pos.z+(Math.random()*.8-.4);
   group.position.set(
-    pos.x+(Math.random()*.8-.4),
-    0,
-    pos.z+(Math.random()*.8-.4)
+    spawnJx,
+    getGroundHeightAt(spawnJx,spawnJz),
+    spawnJz
   );
   scene.add(group);
-  const hpMul=isBetter?1.3:1;
-  const dmgMul=isBetter?1.25:1;
+  /*
+    DIFFICULTY only scales the OPPOSING team — isBetter is
+    only ever passed true for enemies (see spawnMatch()), never
+    for the player's own allies, so gating on it here tunes how
+    tough the enemy team is without touching your own squad.
+  */
+  const diff=
+    isBetter
+    ?DIFFICULTIES[selectedDifficultyIndex]
+    :null;
+  const hpMul=(isBetter?1.3:1)*(diff?diff.hpMul:1);
+  const dmgMul=(isBetter?1.25:1)*(diff?diff.dmgMul:1);
   return {
     group,
     x:group.position.x,
@@ -3323,7 +3513,8 @@ function makeBot(pos,op,team,isBetter){
     weaponDmg:op.weapon.dmg*dmgMul,
     fireCdBase:op.weapon.fireCd,
     range:op.weapon.range,
-    accuracyMul:isBetter?1.1:.8,
+    accuracyMul:(isBetter?1.1:.8)*(diff?diff.accuracyMul:1),
+    reactionMul:diff?diff.reactionMul:1,
     isBetter,
     fireCd:0,
     alert:false,
@@ -3505,7 +3696,7 @@ const player={
 const SPAWN_GRACE_DURATION=2.2;
 camera.position.set(
   player.x,
-  player.height,
+  player.height+getGroundHeightAt(player.x,player.z),
   player.z
 );
 /* =========================================================
@@ -4711,9 +4902,10 @@ function fireWeaponRay(origin,dir){
     */
     const scale=
       (en.group&&en.group.scale&&en.group.scale.y)||1;
+    const groundY=getGroundHeightAt(en.x,en.z);
     const bodyRadius=.42*scale;
-    const headMinY=1.68*scale;
-    const headMaxY=2.45*scale;
+    const headMinY=1.68*scale+groundY;
+    const headMaxY=2.45*scale+groundY;
     const denom=
       dir.x*dir.x+
       dir.z*dir.z;
@@ -5107,13 +5299,13 @@ function botFireAt(shooter,target){
   const origin=
     new THREE.Vector3(
       shooter.x,
-      1.6,
+      1.6+getGroundHeightAt(shooter.x,shooter.z),
       shooter.z
     );
   const targetPos=
     new THREE.Vector3(
       target.x,
-      isPlayer?player.height:1.6,
+      (isPlayer?player.height:1.6)+getGroundHeightAt(target.x,target.z),
       target.z
     );
   addTracer(
@@ -5337,7 +5529,7 @@ function runBotAI(bot,opponents,dt){
   resolveDecorationCollision(selfPos,bot.r);
   bot.x=selfPos.x;
   bot.z=selfPos.z;
-  bot.group.position.set(bot.x,0,bot.z);
+  bot.group.position.set(bot.x,getGroundHeightAt(bot.x,bot.z),bot.z);
   const found=
     findNearestVisibleTarget(
       bot,opponents
@@ -5359,9 +5551,11 @@ function runBotAI(bot,opponents,dt){
     if(!bot.hadTarget){
       bot.fireCd=Math.max(
         bot.fireCd,
-        bot.isBetter
-        ?.45+Math.random()*.3
-        :.7+Math.random()*.45
+        (
+          bot.isBetter
+          ?.45+Math.random()*.3
+          :.7+Math.random()*.45
+        )*(bot.reactionMul||1)
       );
     }
     bot.hadTarget=true;
@@ -5472,7 +5666,7 @@ function runBotAI(bot,opponents,dt){
     bot.x=npos.x;
     bot.z=npos.z;
     bot.group.position.set(
-      bot.x,0,bot.z
+      bot.x,getGroundHeightAt(bot.x,bot.z),bot.z
     );
     /*
       Smoothly turn toward the target facing instead of
@@ -6857,7 +7051,7 @@ function update(){
   player.z=newPos.z;
   camera.position.set(
     player.x,
-    player.height,
+    player.height+getGroundHeightAt(player.x,player.z),
     player.z
   );
   const bobAmount=
@@ -7563,7 +7757,7 @@ const BOSS_OPERATOR={
   name:'JUGGERNAUT PRIME',
   role:'BOSS',
   accent:'#ff2a20',
-  maxHp:2200,
+  maxHp:3000,
   speedMul:.6,
   weapon:{
     name:'HX-AUTOCANNON',
@@ -7614,13 +7808,27 @@ function spawnBossEncounter(){
   */
   const group=
     buildOperator(0x181212,BOSS_OPERATOR.accent,'robotic');
+  const bossJx=spawnPoint.x+(Math.random()*.8-.4);
+  const bossJz=spawnPoint.z+(Math.random()*.8-.4);
   group.position.set(
-    spawnPoint.x+(Math.random()*.8-.4),
-    0,
-    spawnPoint.z+(Math.random()*.8-.4)
+    bossJx,
+    getGroundHeightAt(bossJx,bossJz),
+    bossJz
   );
   group.scale.set(1.7,1.7,1.7);
   scene.add(group);
+  /*
+    Same DIFFICULTIES scaling as makeBot() applies to regular
+    enemy bots (see buildDifficultyMenu()) — the boss's base
+    stats (BOSS_OPERATOR) get tuned by whichever difficulty was
+    picked on the deploy screen. bossCarryHp (a life-to-life
+    carry-over of the previous attempt's remaining HP) is
+    already an absolute value, so it's clamped against the
+    difficulty-scaled max rather than the raw base max.
+  */
+  const bossDiff=DIFFICULTIES[selectedDifficultyIndex];
+  const bossMaxHp=
+    Math.round(BOSS_OPERATOR.maxHp*bossDiff.hpMul);
   const boss={
     group,
     x:group.position.x,
@@ -7630,14 +7838,15 @@ function spawnBossEncounter(){
     op:BOSS_OPERATOR,
     hp:
       bossCarryHp!==null
-      ?Math.min(bossCarryHp,BOSS_OPERATOR.maxHp)
-      :BOSS_OPERATOR.maxHp,
-    maxHp:BOSS_OPERATOR.maxHp,
+      ?Math.min(bossCarryHp,bossMaxHp)
+      :bossMaxHp,
+    maxHp:bossMaxHp,
     speed:5.2*BOSS_OPERATOR.speedMul,
-    weaponDmg:BOSS_OPERATOR.weapon.dmg,
+    weaponDmg:BOSS_OPERATOR.weapon.dmg*bossDiff.dmgMul,
     fireCdBase:BOSS_OPERATOR.weapon.fireCd,
     range:BOSS_OPERATOR.weapon.range,
-    accuracyMul:1.2,
+    accuracyMul:1.2*bossDiff.accuracyMul,
+    reactionMul:bossDiff.reactionMul,
     isBetter:true,
     fireCd:0,
     alert:false,
@@ -8319,9 +8528,10 @@ function updateCheatLaser(dt){
     */
     const scale=
       (en.group&&en.group.scale&&en.group.scale.y)||1;
+    const groundY=getGroundHeightAt(en.x,en.z);
     const bodyRadius=.42*scale;
-    const headMinY=1.68*scale;
-    const headMaxY=2.45*scale;
+    const headMinY=1.68*scale+groundY;
+    const headMaxY=2.45*scale+groundY;
     const denom=dir.x*dir.x+dir.z*dir.z;
     if(denom<1e-6)
       continue;
@@ -8555,6 +8765,41 @@ function buildSideMenu(){
     grid.appendChild(chip);
   });
 }
+/*
+  DIFFICULTY — scales how tough the OPPOSING bots are (see the
+  isBetter-gated block in makeBot()): their HP, weapon damage,
+  aim accuracy, and how quickly a bot reacts once it spots a
+  target. Applies to both the regular 5v4 match and the boss
+  fight's single boss (see spawnBossEncounter()). Your own
+  allies are never scaled by this — only what you're up against.
+*/
+const DIFFICULTIES=[
+  {id:'easy',label:'EASY',hpMul:.8,dmgMul:.7,accuracyMul:.75,reactionMul:1.5},
+  {id:'normal',label:'NORMAL',hpMul:1,dmgMul:1,accuracyMul:1,reactionMul:1},
+  {id:'hard',label:'HARD',hpMul:1.25,dmgMul:1.3,accuracyMul:1.3,reactionMul:.6}
+];
+let selectedDifficultyIndex=1;
+function buildDifficultyMenu(){
+  const grid=
+    document.getElementById('diffGrid');
+  grid.innerHTML='';
+  DIFFICULTIES.forEach((diff,i)=>{
+    const chip=
+      document.createElement('div');
+    chip.className=
+      'diffChip'+
+      (i===selectedDifficultyIndex?' selected':'');
+    chip.textContent=diff.label;
+    chip.addEventListener('click',()=>{
+      selectedDifficultyIndex=i;
+      document
+        .querySelectorAll('.diffChip')
+        .forEach(c=>c.classList.remove('selected'));
+      chip.classList.add('selected');
+    });
+    grid.appendChild(chip);
+  });
+}
 document
   .getElementById('deployBtn')
   .addEventListener('click',()=>{
@@ -8582,6 +8827,7 @@ buildMenu();
 buildSkinMenu();
 buildMapMenu();
 buildSideMenu();
+buildDifficultyMenu();
 updateTokenHud();
 renderShop();
 loadLevel(0);
