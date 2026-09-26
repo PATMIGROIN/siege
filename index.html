@@ -966,6 +966,36 @@ canvas{
     <div id="shopGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;"></div>
   </div>
 </div>
+<div id="onlineMenuOverlay" style="display:none;position:fixed;inset:0;background:rgba(6,8,10,.88);z-index:150000;font-family:inherit;">
+  <div style="max-width:520px;margin:14vh auto;background:#0f1416;border:1px solid #24343a;border-radius:10px;padding:28px 30px 32px;text-align:center;">
+    <h2 style="margin:0 0 6px;color:#7fd8ff;letter-spacing:.05em;font-size:20px;">1V1 ONLINE DUEL</h2>
+    <p style="color:#8a9aa0;font-size:12px;margin:2px 0 22px;">
+      Peer-to-peer — no accounts, no server. Host a match and share the room code with whoever you want to play, or join with a code someone gave you. Uses your currently selected operator, skin and map from the menu behind this.
+    </p>
+    <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">
+      <button id="hostMatchBtn" style="padding:12px 28px;background:#7fd8ff;color:#08171e;border:none;font-family:inherit;font-weight:bold;letter-spacing:1.5px;font-size:13px;cursor:pointer;border-radius:3px;">HOST MATCH</button>
+      <button id="joinMatchBtn" style="padding:12px 28px;background:#1c2420;color:#7fd8ff;border:1px solid #2a4a54;font-family:inherit;font-weight:bold;letter-spacing:1.5px;font-size:13px;cursor:pointer;border-radius:3px;">JOIN MATCH</button>
+    </div>
+    <div id="joinCodeRow" style="display:none;margin-top:18px;">
+      <input id="joinCodeInput" maxlength="5" placeholder="ROOM CODE" style="text-transform:uppercase;letter-spacing:4px;text-align:center;font:700 16px 'Courier New',monospace;padding:10px;width:140px;background:#0a0d0a;color:#c9d94a;border:1px solid #3a4a38;border-radius:3px;">
+      <button id="joinConnectBtn" style="margin-left:10px;padding:10px 20px;background:#c9d94a;color:#0c0f0a;border:none;font-family:inherit;font-weight:bold;letter-spacing:1px;font-size:12px;cursor:pointer;border-radius:3px;">CONNECT</button>
+    </div>
+    <p style="color:#6a7a80;font-size:10px;margin-top:16px;">No operator abilities, grenades or wall-breaching in duel mode v1 — straight gunfights only.</p>
+    <button id="onlineBackBtn" style="margin-top:10px;background:none;border:1px solid #3a4a38;color:#9aa89a;border-radius:4px;padding:7px 18px;cursor:pointer;font:600 12px system-ui,sans-serif;">BACK</button>
+  </div>
+</div>
+<div id="duelLobbyOverlay" style="display:none;position:fixed;inset:0;background:rgba(6,8,10,.9);z-index:150000;font-family:inherit;">
+  <div style="max-width:520px;margin:16vh auto;background:#0f1416;border:1px solid #24343a;border-radius:10px;padding:28px 30px 32px;text-align:center;">
+    <h2 style="margin:0 0 14px;color:#7fd8ff;letter-spacing:.05em;font-size:19px;" id="duelLobbyTitle">HOSTING MATCH</h2>
+    <div id="duelLobbyCodeBlock" style="display:none;margin-bottom:16px;">
+      <div style="color:#8a9aa0;font-size:11px;letter-spacing:.08em;margin-bottom:6px;">SHARE THIS ROOM CODE</div>
+      <div id="duelLobbyCode" style="font:700 34px 'Courier New',monospace;letter-spacing:8px;color:#c9d94a;">-----</div>
+    </div>
+    <div id="duelLobbyStatus" style="color:#9ab0b8;font-size:13px;margin-bottom:22px;min-height:18px;">CONNECTING&hellip;</div>
+    <button id="duelStartBtn" style="display:none;padding:12px 30px;background:#c9d94a;color:#0c0f0a;border:none;font-family:inherit;font-weight:bold;letter-spacing:2px;font-size:13px;cursor:pointer;border-radius:3px;">START MATCH</button>
+    <button id="duelLobbyCancelBtn" style="margin-top:14px;display:block;margin-left:auto;margin-right:auto;background:none;border:1px solid #3a4a38;color:#9aa89a;border-radius:4px;padding:7px 18px;cursor:pointer;font:600 12px system-ui,sans-serif;">CANCEL</button>
+  </div>
+</div>
 <div id="canvasWrap">
 <div id="menuScreen">
   <h1>BREACH PROTOCOL</h1>
@@ -996,6 +1026,7 @@ canvas{
     </div>
     <button id="deployBtn">DEPLOY</button>
     <button id="bossFightBtn">&#9760; BOSS FIGHT</button>
+    <button id="onlineBtn" style="padding:11px 34px;background:#0d1c22;color:#7fd8ff;border:1px solid #24444e;font-family:inherit;font-weight:bold;letter-spacing:2px;font-size:13px;cursor:pointer;margin-top:10px;">&#9737; 1V1 ONLINE</button>
     <div id="hint">
       Mouse will lock to the window — press ESC anytime to release it.
     </div>
@@ -1098,14 +1129,20 @@ canvas{
   <div id="timeRow">
     TIME <span id="timeVal">120</span>s
   </div>
-  <div>
+  <div id="enemyRow">
     ENEMIES LEFT <span id="enemyVal">5</span>
   </div>
   <div id="allyRow">
     ALLIES LEFT <span id="allyVal">4</span>
   </div>
-  <div>
+  <div id="sideRow">
     SIDE <span id="sideVal">ATTACK</span>
+  </div>
+  <div id="duelOppHud" style="display:none;">
+    OPPONENT HP <span id="duelOppHpVal">100</span>
+    <div class="bar">
+      <i id="duelOppHpBar" style="background:#d9524a;width:120px;"></i>
+    </div>
   </div>
   <div>
     SCORE <span id="scoreVal">0</span>
@@ -1149,6 +1186,7 @@ canvas{
 </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.5/peerjs.min.js"></script>
 <script>
 /* =========================================================
    SCENE
@@ -3629,7 +3667,7 @@ function spawnMatch(){
 /* =========================================================
    LEVEL LOADING
 ========================================================= */
-function loadLevel(idx){
+function loadLevel(idx,skipSpawn){
   currentLevel=idx;
   const theme=getLevel();
   scene.background.setHex(theme.sky);
@@ -3647,7 +3685,8 @@ function loadLevel(idx){
   addDecorations();
   placeMapCameras(site);
   buildNavWaypoints();
-  spawnMatch();
+  if(!skipSpawn)
+    spawnMatch();
 }
 /* =========================================================
    PLAYER
@@ -4015,6 +4054,8 @@ function updateHud(){
       : 'READY';
   }
   updateBossHud();
+  if(duelMode)
+    updateDuelHud();
 }
 /* =========================================================
    BULLET TRACERS
@@ -5783,6 +5824,17 @@ function checkEliminationWin(){
     return;
   if(!enemies.every(e=>e.dead))
     return;
+  if(duelMode){
+    /*
+      Only the HOST ever has a non-empty enemies array in duel
+      mode (the joiner's own enemies stays [] the whole match —
+      see beginDuelMatch), so this branch only ever runs on the
+      host, exactly where the round outcome needs to be decided
+      authoritatively.
+    */
+    duelEndRound(true,'OPPONENT ELIMINATED — YOU WIN THE ROUND');
+    return;
+  }
   if(bossFight){
     bossVictory();
     return;
@@ -6185,6 +6237,16 @@ function moveWithCollision(pos,dx,dz,r){
 ========================================================= */
 function triggerAbility(){
   if(!locked)
+    return;
+  /*
+    Operator abilities (grenades, cloak, breach charge, shield,
+    overdrive, intel scan) are disabled for v1 of online duel
+    mode — their world-mutating side effects (thrown/placed
+    objects, wallhack outlines, etc.) aren't networked, so
+    letting them fire would only ever do something visible on
+    whichever side pressed G. Straight gunfights only for now.
+  */
+  if(duelMode)
     return;
   if(
     gameState==='gameover' ||
@@ -6775,7 +6837,7 @@ function update(){
         Math.max(0,player.spawnGrace-dt);
     }
     roundTime-=dt;
-    if(roundTime<=0&&!bossFight){
+    if(roundTime<=0&&!bossFight&&!duelMode){
       if(player.team==='attack'){
         loseRound(
           'TIME EXPIRED — BOMB SECURED, DEFENSE WINS'
@@ -7112,7 +7174,7 @@ function update(){
      BREACH — a tactical tool available to either side
   ===================================================== */
   let breached=false;
-  if(keys['f']&&inputActive&&player.hp>0){
+  if(keys['f']&&inputActive&&player.hp>0&&!duelMode){
     for(
       const w of walls
     ){
@@ -7169,7 +7231,7 @@ function update(){
      defuse it; defenders simply have to keep them off it —
      there's no plant phase and nothing detonates.
   ===================================================== */
-  if(gameState==='playing'&&!bossFight){
+  if(gameState==='playing'&&!bossFight&&!duelMode){
     const attackBots=
       player.team==='attack'
       ?allies:enemies;
@@ -7231,15 +7293,50 @@ function update(){
      runBotAI); the defending side holds until it spots
      someone.
   ===================================================== */
-  const enemyOpponents=
-    [player,...allies];
-  enemies.forEach(en=>
-    runBotAI(en,enemyOpponents,dt)
-  );
-  const allyOpponents=enemies;
-  allies.forEach(a=>
-    runBotAI(a,allyOpponents,dt)
-  );
+  if(!duelMode){
+    const enemyOpponents=
+      [player,...allies];
+    enemies.forEach(en=>
+      runBotAI(en,enemyOpponents,dt)
+    );
+    const allyOpponents=enemies;
+    allies.forEach(a=>
+      runBotAI(a,allyOpponents,dt)
+    );
+  }
+  else if(Net.isHost&&duelRoundActive){
+    hostTickDuel(dt);
+  }
+  if(duelMode&&duelRoundActive){
+    if(Net.isHost){
+      Net.send({
+        t:'snap',
+        hx:player.x,
+        hz:player.z,
+        hyaw:player.yaw,
+        hostHp:player.hp,
+        joinHp:enemies[0]?enemies[0].hp:0,
+        hw:duelHostWins,
+        jw:duelJoinWins
+      });
+    }
+    else{
+      Net.send({
+        t:'in',
+        k:{
+          w:!!keys['w'],
+          a:!!keys['a'],
+          s:!!keys['s'],
+          d:!!keys['d'],
+          shift:!!keys['shift']
+        },
+        yaw:player.yaw,
+        pitch:player.pitch,
+        fire:mouseDown&&player.hp>0,
+        reload:!!keys['r']
+      });
+    }
+  }
   bombGlowSprite.material.opacity=
     .5+
     Math.sin(performance.now()*.01)*.3;
@@ -7431,6 +7528,19 @@ window.addEventListener(
     ){
       e.preventDefault();
       document.exitPointerLock();
+      if(duelMode){
+        duelMode=false;
+        duelRoundActive=false;
+        Net.teardown();
+        setDuelHudRowsVisible(false);
+        if(duelHostAvatar){
+          scene.remove(duelHostAvatar);
+          duelHostAvatar=null;
+        }
+        enemies.forEach(en=>scene.remove(en.group));
+        enemies=[];
+        allies=[];
+      }
       gameState='menu';
       document
         .getElementById('msg')
@@ -7691,6 +7801,14 @@ function applyOperatorLoadout(op){
   same as every other loadout stat.
 */
 function activateSecretCheat(){
+  /*
+    Disabled in online duel mode — an actual opponent is on the
+    other end of the connection, so a 10000hp/one-shot-kill
+    cheat would just ruin their match instead of being a fun
+    single-player easter egg.
+  */
+  if(duelMode)
+    return;
   player.hp=10000;
   player.maxHp=10000;
   player.weaponDmg=500;
@@ -8819,6 +8937,863 @@ document
     playUiClick();
     resetRound();
     canvasEl.requestPointerLock();
+  });
+/* =========================================================
+   ONLINE DUEL — peer-to-peer 1v1, no server.
+   PeerJS's free public cloud is used purely as a signaling
+   broker to help the two browsers find each other; once
+   connected, all match traffic flows directly between them
+   over WebRTC. The HOST is fully authoritative: it runs the
+   whole simulation for BOTH players (integrating the joiner's
+   raw input every frame, resolving every shot on both sides),
+   and simply streams the result to the joiner. The joiner
+   predicts its own movement locally for responsiveness but
+   never decides its own hp, a kill, or a round outcome — that
+   always comes back from the host. This keeps the two sides
+   from ever disagreeing about who won, and closes off any
+   client-side "I didn't die" cheating.
+
+   Scope note (v1): operator abilities/grenades/wall-breaching
+   are disabled for the whole duel (see triggerAbility() and
+   the 'f' guard in update()) since their world-mutating effects
+   aren't networked — straight gunfights on foot only.
+========================================================= */
+const Net={
+  peer:null,
+  conn:null,
+  isHost:false,
+  connected:false,
+  roomCode:null,
+  onMessage:null,
+  onClose:null,
+  _codeChars:'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
+  _genCode(){
+    let s='';
+    for(let i=0;i<5;i++){
+      s+=this._codeChars[
+        Math.floor(Math.random()*this._codeChars.length)
+      ];
+    }
+    return s;
+  },
+  hostGame(onCode,onConnected,onError){
+    this.isHost=true;
+    this.roomCode=this._genCode();
+    let peer;
+    try{
+      peer=new Peer('bpsiege-'+this.roomCode);
+    }
+    catch(e){
+      onError&&onError(e);
+      return;
+    }
+    this.peer=peer;
+    peer.on('open',()=>{
+      onCode&&onCode(this.roomCode);
+    });
+    peer.on('connection',conn=>{
+      /*
+        This is a 1v1 duel — a second incoming connection while
+        one is already established (or mid-match) is refused
+        outright rather than silently replacing the first.
+      */
+      if(this.conn){
+        try{conn.close();}catch(e){}
+        return;
+      }
+      this.conn=conn;
+      this._wire(conn,onConnected);
+    });
+    peer.on('error',err=>{
+      onError&&onError(err);
+    });
+  },
+  joinGame(code,onConnected,onError){
+    this.isHost=false;
+    let peer;
+    try{
+      peer=new Peer();
+    }
+    catch(e){
+      onError&&onError(e);
+      return;
+    }
+    this.peer=peer;
+    peer.on('open',()=>{
+      const conn=
+        peer.connect(
+          'bpsiege-'+code,
+          {reliable:true}
+        );
+      this.conn=conn;
+      this._wire(conn,onConnected);
+    });
+    peer.on('error',err=>{
+      onError&&onError(err);
+    });
+  },
+  _wire(conn,onConnected){
+    conn.on('open',()=>{
+      this.connected=true;
+      onConnected&&onConnected();
+    });
+    conn.on('data',data=>{
+      if(this.onMessage)
+        this.onMessage(data);
+    });
+    conn.on('close',()=>{
+      this.connected=false;
+      if(this.onClose)
+        this.onClose();
+    });
+    conn.on('error',()=>{
+      this.connected=false;
+      if(this.onClose)
+        this.onClose();
+    });
+  },
+  send(msg){
+    if(this.conn&&this.connected){
+      try{this.conn.send(msg);}catch(e){}
+    }
+  },
+  teardown(){
+    try{if(this.conn)this.conn.close();}catch(e){}
+    try{if(this.peer)this.peer.destroy();}catch(e){}
+    this.peer=null;
+    this.conn=null;
+    this.connected=false;
+    this.roomCode=null;
+    this.onMessage=null;
+    this.onClose=null;
+  }
+};
+let duelMode=false;
+let duelRoundActive=false;
+let duelHostWins=0;
+let duelJoinWins=0;
+const DUEL_WINS_NEEDED=3;
+let duelRemoteOpIndex=0;
+let duelOppHpMirror=100;
+let duelOppMaxHpMirror=100;
+let duelHostAvatar=null;
+let _lastJoinHpSeen=null;
+let _remoteAimCam=null;
+const remoteInput={
+  keys:{},
+  yaw:0,
+  pitch:0,
+  fire:false,
+  reload:false
+};
+/*
+  Fixed, always-clear-of-geometry-ASAP facing spawn points for
+  the duel — the two are mirrored across the arena and face
+  each other (see the from-scratch prototype this was proven
+  in: yaw 0 faces -Z, yaw PI faces +Z, matching how
+  camera.rotation.y is actually driven from player.yaw
+  elsewhere in this file). Run through the same wall/decoration
+  push-out loop used for every other spawn in this game (see
+  spawnSlot()/resetRound()) since the exact map layout differs
+  per theme.
+*/
+const DUEL_HOST_SPAWN={x:0,z:9,yaw:0};
+const DUEL_JOIN_SPAWN={x:0,z:-9,yaw:Math.PI};
+function setDuelHudRowsVisible(isDuel){
+  document.getElementById('timeRow').style.display=
+    isDuel?'none':'block';
+  document.getElementById('allyRow').style.display=
+    isDuel?'none':'block';
+  document.getElementById('enemyRow').style.display=
+    isDuel?'none':'block';
+  document.getElementById('sideRow').style.display=
+    isDuel?'none':'block';
+  document.getElementById('duelOppHud').style.display=
+    isDuel?'block':'none';
+  document.getElementById('roundSuffix').textContent=
+    isDuel?'(BO5)':'(BO3)';
+}
+function updateDuelHud(){
+  document.getElementById('roundVal').textContent=
+    duelHostWins+duelJoinWins+1;
+  const mine=
+    Net.isHost?duelHostWins:duelJoinWins;
+  const theirs=
+    Net.isHost?duelJoinWins:duelHostWins;
+  document.getElementById('matchScoreVal').textContent=
+    mine+'-'+theirs;
+  let oppHp=duelOppHpMirror;
+  let oppMax=duelOppMaxHpMirror;
+  if(Net.isHost){
+    oppHp=enemies[0]?enemies[0].hp:0;
+    oppMax=enemies[0]?enemies[0].maxHp:1;
+  }
+  document.getElementById('duelOppHpVal').textContent=
+    Math.max(0,Math.round(oppHp));
+  document.getElementById('duelOppHpBar').style.width=
+    Math.max(0,Math.min(1,oppHp/(oppMax||1)))*120+'px';
+}
+/*
+  Builds the HOST-side stand-in for the joiner: a real entry in
+  the same `enemies` array the single-player game already uses,
+  so fireWeaponRay()/checkEliminationWin() resolve the host's
+  own shots against it completely unmodified (hitmarkers, score,
+  tokens, headshot messages, finishers, wall occlusion — all of
+  it reused as-is).
+*/
+function createDuelRemoteEnemy(op){
+  const theme=getLevel();
+  const group=
+    buildOperator(
+      0x2a3a4a,
+      op.accent||'#7fd8ff',
+      theme.enemyType
+    );
+  scene.add(group);
+  const ent={
+    group,
+    x:DUEL_JOIN_SPAWN.x,
+    z:DUEL_JOIN_SPAWN.z,
+    yaw:DUEL_JOIN_SPAWN.yaw,
+    r:.5,
+    team:'defense',
+    op,
+    hp:op.maxHp,
+    maxHp:op.maxHp,
+    ammo:op.weapon.mag,
+    maxAmmo:op.weapon.mag,
+    fireCd:0,
+    reloadCd:0,
+    dead:false,
+    isBot:false,
+    isDuelRemote:true,
+    isBoss:false
+  };
+  for(let pass=0;pass<10;pass++){
+    resolveWallCollisionXZ(ent,ent.r);
+    resolveDecorationCollision(ent,ent.r);
+  }
+  const gy=getGroundHeightAt(ent.x,ent.z);
+  group.position.set(ent.x,gy,ent.z);
+  group.rotation.y=ent.yaw;
+  return ent;
+}
+/*
+  HOST-SIDE SIMULATION of the joiner: derives the same
+  yaw-only forward/right basis used for the local player's own
+  movement (see the movement block above in update()), runs it
+  through the same moveWithCollision() every other entity uses,
+  and — the key non-obvious bit — resolves the joiner's own
+  aimed shot with a throwaway, never-rendered PerspectiveCamera
+  rather than a plain Object3D. THREE.Camera.getWorldDirection()
+  negates the forward axis (cameras look down -Z) while
+  Object3D.getWorldDirection() does not; using the wrong one
+  here would silently aim every joiner shot 180° backwards.
+*/
+function hostTickDuel(dt){
+  const remote=enemies[0];
+  if(!remote||remote.dead)
+    return;
+  const k=remoteInput.keys||{};
+  let mx=0;
+  let mz=0;
+  if(k.w)mz-=1;
+  if(k.s)mz+=1;
+  if(k.a)mx-=1;
+  if(k.d)mx+=1;
+  const mag=Math.hypot(mx,mz)||1;
+  mx/=mag;
+  mz/=mag;
+  const yaw=remoteInput.yaw||0;
+  _moveForward.set(0,0,-1).applyAxisAngle(_moveWorldUp,yaw);
+  _moveRight.set(1,0,0).applyAxisAngle(_moveWorldUp,yaw);
+  const spdBase=
+    5.2*(remote.op.speedMul||1)*
+    (k.shift?1.55:1);
+  const spd=spdBase*dt;
+  _moveDir.set(0,0,0);
+  _moveDir.addScaledVector(_moveForward,-mz);
+  _moveDir.addScaledVector(_moveRight,mx);
+  if(_moveDir.lengthSq()>0)
+    _moveDir.normalize();
+  const newPos={x:remote.x,z:remote.z};
+  moveWithCollision(
+    newPos,
+    _moveDir.x*spd,
+    _moveDir.z*spd,
+    remote.r
+  );
+  remote.x=Math.max(-39,Math.min(39,newPos.x));
+  remote.z=Math.max(-39,Math.min(39,newPos.z));
+  remote.yaw=yaw;
+  const gy=getGroundHeightAt(remote.x,remote.z);
+  remote.group.position.set(remote.x,gy,remote.z);
+  remote.group.rotation.y=yaw;
+  if(remote.fireCd>0)
+    remote.fireCd=Math.max(0,remote.fireCd-dt);
+  if(remote.reloadCd>0){
+    remote.reloadCd=Math.max(0,remote.reloadCd-dt);
+    if(remote.reloadCd<=0)
+      remote.ammo=remote.maxAmmo;
+  }
+  if(
+    remoteInput.reload&&
+    remote.ammo<remote.maxAmmo&&
+    remote.reloadCd<=0
+  ){
+    remote.reloadCd=remote.op.weapon.reload;
+  }
+  if(
+    remoteInput.fire&&
+    remote.ammo>0&&
+    remote.fireCd<=0&&
+    remote.reloadCd<=0
+  ){
+    remote.ammo--;
+    remote.fireCd=remote.op.weapon.fireCd;
+    if(!_remoteAimCam)
+      _remoteAimCam=new THREE.PerspectiveCamera();
+    _remoteAimCam.rotation.order='YXZ';
+    _remoteAimCam.rotation.y=yaw;
+    _remoteAimCam.rotation.x=
+      Math.max(-1.45,Math.min(1.15,remoteInput.pitch||0));
+    _remoteAimCam.position.set(remote.x,gy+1.6,remote.z);
+    _remoteAimCam.updateMatrixWorld(true);
+    const dir=new THREE.Vector3();
+    _remoteAimCam.getWorldDirection(dir);
+    duelResolveShotOnHost(
+      remote,
+      _remoteAimCam.position.clone(),
+      dir
+    );
+    if(remote.ammo<=0)
+      remote.reloadCd=remote.op.weapon.reload;
+  }
+}
+/*
+  Resolves the JOINER's shot against the HOST's own `player` —
+  the mirror image of fireWeaponRay(), which resolves the
+  HOST's shots against `enemies`. Kept as its own function
+  (rather than trying to route through fireWeaponRay or
+  botFireAt) because neither fits: fireWeaponRay always targets
+  `enemies`, and botFireAt uses a random accuracy-roll model
+  meant for bots, not a real aimed shot from another human.
+*/
+function duelResolveShotOnHost(shooter,origin,dir){
+  let wallDist=Infinity;
+  raycaster.set(origin,dir);
+  for(const w of walls){
+    if(w.broken)
+      continue;
+    const box=
+      new THREE.Box3().setFromObject(w.mesh);
+    const hit=
+      raycaster.ray.intersectBox(box,new THREE.Vector3());
+    if(hit){
+      const d=origin.distanceTo(hit);
+      if(d<wallDist)
+        wallDist=d;
+    }
+  }
+  const range=shooter.op.weapon.range;
+  const groundY=getGroundHeightAt(player.x,player.z);
+  const bodyRadius=.42;
+  const headMinY=1.68+groundY;
+  const headMaxY=2.45+groundY;
+  const denom=dir.x*dir.x+dir.z*dir.z;
+  if(denom<1e-6)
+    return;
+  const t=
+    ((player.x-origin.x)*dir.x+(player.z-origin.z)*dir.z)/denom;
+  if(t<0||t>range)
+    return;
+  if(wallDist<t)
+    return;
+  const hitX=origin.x+dir.x*t;
+  const hitY=origin.y+dir.y*t;
+  const hitZ=origin.z+dir.z*t;
+  const horizDist=Math.hypot(hitX-player.x,hitZ-player.z);
+  if(horizDist>=bodyRadius)
+    return;
+  const isHead=hitY>=headMinY&&hitY<=headMaxY;
+  addTracer(
+    origin,
+    new THREE.Vector3(hitX,hitY,hitZ),
+    true
+  );
+  if(player.spawnGrace>0)
+    return;
+  const wasAlive=player.hp>0;
+  const dmg=isHead?9999:shooter.op.weapon.dmg;
+  player.hp-=dmg;
+  document.getElementById('damageOverlay').style.opacity=.7;
+  setTimeout(
+    ()=>{
+      document.getElementById('damageOverlay').style.opacity=0;
+    },
+    120
+  );
+  if(wasAlive&&player.hp<=0){
+    startDeathCam(
+      shooter,
+      isHead,
+      shooter.op.weapon.name,
+      shooter.op.name
+    );
+    duelEndRound(
+      false,
+      'YOU WERE ELIMINATED — OPPONENT WINS THE ROUND'
+    );
+  }
+}
+/*
+  Authoritative round/match resolution — HOST ONLY. Runs
+  whenever the host's own enemies[0] (the joiner) dies (see
+  the duelMode branch in checkEliminationWin()) or the host's
+  own player dies (see duelResolveShotOnHost() above).
+*/
+function duelEndRound(hostWon,text){
+  if(!duelRoundActive)
+    return;
+  duelRoundActive=false;
+  if(hostWon)
+    duelHostWins++;
+  else
+    duelJoinWins++;
+  const matchOver=
+    duelHostWins>=DUEL_WINS_NEEDED||
+    duelJoinWins>=DUEL_WINS_NEEDED;
+  playRoundStinger(hostWon);
+  Net.send({
+    t:'roundEnd',
+    hostWon,
+    hw:duelHostWins,
+    jw:duelJoinWins,
+    matchOver
+  });
+  if(matchOver){
+    gameState=hostWon?'victory':'gameover';
+    if(hostWon){
+      score+=500;
+      addTokens(150);
+    }
+    showMsg(
+      text+' — MATCH '+
+      (hostWon?'WON ':'LOST ')+
+      duelHostWins+'-'+duelJoinWins+
+      ' — PRESS R FOR OPERATOR SELECT'+
+      (hostWon?' (+150 TOKENS)':''),
+      999999
+    );
+  }
+  else{
+    showMsg(
+      text+' ('+duelHostWins+'-'+duelJoinWins+')',
+      2600
+    );
+    setTimeout(resetDuelRound,2600);
+  }
+}
+/*
+  Mirror of duelEndRound() for the JOIN side — the host is the
+  one deciding outcomes, this just reacts to what it decided.
+*/
+function handleDuelRoundEnd(data){
+  duelRoundActive=false;
+  duelHostWins=data.hw;
+  duelJoinWins=data.jw;
+  const iWon=!data.hostWon;
+  playRoundStinger(iWon);
+  if(data.matchOver){
+    gameState=iWon?'victory':'gameover';
+    showMsg(
+      (iWon?'ROUND WON':'ROUND LOST')+
+      ' — MATCH '+
+      (iWon?'WON ':'LOST ')+
+      duelJoinWins+'-'+duelHostWins+
+      ' — PRESS R FOR OPERATOR SELECT',
+      999999
+    );
+  }
+  else{
+    showMsg(
+      (iWon?'ROUND WON':'ROUND LOST')+
+      ' ('+duelJoinWins+'-'+duelHostWins+')',
+      2600
+    );
+    setTimeout(resetDuelRound,2600);
+  }
+}
+function applyDuelSnap(data){
+  if(!duelMode||Net.isHost)
+    return;
+  const newHp=Math.max(0,data.joinHp);
+  if(_lastJoinHpSeen!==null&&newHp<_lastJoinHpSeen){
+    document.getElementById('damageOverlay').style.opacity=.7;
+    setTimeout(
+      ()=>{
+        document.getElementById('damageOverlay').style.opacity=0;
+      },
+      120
+    );
+  }
+  _lastJoinHpSeen=newHp;
+  player.hp=newHp;
+  duelOppHpMirror=data.hostHp;
+  duelHostWins=data.hw;
+  duelJoinWins=data.jw;
+  if(duelHostAvatar){
+    const gy=getGroundHeightAt(data.hx,data.hz);
+    duelHostAvatar.position.set(data.hx,gy,data.hz);
+    duelHostAvatar.rotation.y=data.hyaw;
+  }
+}
+function handleDuelOpponentLeft(){
+  if(!duelMode)
+    return;
+  duelRoundActive=false;
+  gameState='gameover';
+  showMsg(
+    'OPPONENT DISCONNECTED — MATCH ENDED — PRESS R FOR OPERATOR SELECT',
+    999999
+  );
+}
+/*
+  Clears the same transient FX arrays resetRound() clears
+  (tracers/holes/particles/flashlights/grenades) without any
+  of resetRound()'s bomb/site/team-spawn logic, none of which
+  applies to a duel.
+*/
+function clearDuelTransientFx(){
+  for(const b of bulletTracers)
+    scene.remove(b.mesh);
+  bulletTracers=[];
+  for(const hole of bulletHoles)
+    scene.remove(hole.mesh);
+  bulletHoles=[];
+  for(const p of particles)
+    scene.remove(p.spr);
+  particles=[];
+  for(const f of flashLights)
+    scene.remove(f.l);
+  flashLights=[];
+  for(const g of grenades)
+    scene.remove(g.mesh);
+  grenades=[];
+}
+function resetDuelRound(){
+  killCam.active=false;
+  killCam.killer=null;
+  document.getElementById('killCamBanner').style.opacity=0;
+  document.getElementById('detonate').style.display='none';
+  clearDuelTransientFx();
+  if(Net.isHost){
+    player.x=DUEL_HOST_SPAWN.x;
+    player.z=DUEL_HOST_SPAWN.z;
+    player.yaw=DUEL_HOST_SPAWN.yaw;
+    player.pitch=0;
+    for(let pass=0;pass<10;pass++){
+      resolveWallCollisionXZ(player,player.r);
+      resolveDecorationCollision(player,player.r);
+    }
+    player.hp=player.maxHp;
+    player.ammo=player.maxAmmo;
+    player.reloadCd=0;
+    player.spawnGrace=SPAWN_GRACE_DURATION;
+    const remote=enemies[0];
+    if(remote){
+      remote.x=DUEL_JOIN_SPAWN.x;
+      remote.z=DUEL_JOIN_SPAWN.z;
+      remote.yaw=DUEL_JOIN_SPAWN.yaw;
+      for(let pass=0;pass<10;pass++){
+        resolveWallCollisionXZ(remote,remote.r);
+        resolveDecorationCollision(remote,remote.r);
+      }
+      remote.hp=remote.maxHp;
+      remote.ammo=remote.maxAmmo;
+      remote.reloadCd=0;
+      remote.fireCd=0;
+      remote.dead=false;
+      const gy=getGroundHeightAt(remote.x,remote.z);
+      remote.group.visible=true;
+      remote.group.position.set(remote.x,gy,remote.z);
+      remote.group.rotation.y=remote.yaw;
+      scene.add(remote.group);
+    }
+    remoteInput.fire=false;
+    remoteInput.reload=false;
+  }
+  else{
+    player.x=DUEL_JOIN_SPAWN.x;
+    player.z=DUEL_JOIN_SPAWN.z;
+    player.yaw=DUEL_JOIN_SPAWN.yaw;
+    player.pitch=0;
+    for(let pass=0;pass<10;pass++){
+      resolveWallCollisionXZ(player,player.r);
+      resolveDecorationCollision(player,player.r);
+    }
+    player.hp=player.maxHp;
+    player.ammo=player.maxAmmo;
+    player.reloadCd=0;
+    player.spawnGrace=SPAWN_GRACE_DURATION;
+    _lastJoinHpSeen=player.hp;
+    if(duelHostAvatar){
+      const gy=getGroundHeightAt(DUEL_HOST_SPAWN.x,DUEL_HOST_SPAWN.z);
+      duelHostAvatar.position.set(
+        DUEL_HOST_SPAWN.x,gy,DUEL_HOST_SPAWN.z
+      );
+      duelHostAvatar.rotation.y=DUEL_HOST_SPAWN.yaw;
+      duelHostAvatar.visible=true;
+    }
+  }
+  camera.rotation.order='YXZ';
+  camera.rotation.z=0;
+  camera.fov=BASE_FOV;
+  camera.updateProjectionMatrix();
+  duelRoundActive=true;
+  gameState='playing';
+  document.getElementById('cloakOverlay').style.opacity=0;
+  document.getElementById('overdriveOverlay').style.opacity=0;
+  document.getElementById('intelHud').style.display='none';
+  document.getElementById('crosshair').style.opacity=1;
+  document.getElementById('crosshair').style.display='block';
+  document.getElementById('scopeOverlay').style.opacity=0;
+  document.getElementById('ammoHud').style.display='block';
+  document.getElementById('abilityHud').style.display='none';
+  document.getElementById('stanceHud').style.display='block';
+  document.getElementById('spectateHud').style.display='none';
+  hasShownSpectateMsg=false;
+  deathCamShown=false;
+  showMsg(
+    'ROUND '+(duelHostWins+duelJoinWins+1)+' — FIGHT!',
+    1800
+  );
+  updateHud();
+}
+/*
+  Called on BOTH sides once the host clicks START MATCH — the
+  host calls it right after sending 'matchStart'; the joiner
+  calls it from within its Net.onMessage handler on receiving
+  that same message (see openDuelLobbyAsJoin() below).
+*/
+function beginDuelMatch(mapIndex,hostOp,joinOp){
+  if(duelMode)
+    return;
+  duelMode=true;
+  duelHostWins=0;
+  duelJoinWins=0;
+  duelRoundActive=false;
+  score=0;
+  document.getElementById('menuScreen').style.display='none';
+  document.getElementById('onlineMenuOverlay').style.display='none';
+  document.getElementById('duelLobbyOverlay').style.display='none';
+  stopLobbyMusic();
+  setDuelHudRowsVisible(true);
+  loadLevel(mapIndex,true);
+  if(Net.isHost){
+    applyOperatorLoadout(hostOp);
+    remoteInput.keys={};
+    remoteInput.fire=false;
+    remoteInput.reload=false;
+    enemies.forEach(e=>scene.remove(e.group));
+    enemies=[createDuelRemoteEnemy(joinOp)];
+    allies=[];
+    duelOppMaxHpMirror=joinOp.maxHp;
+  }
+  else{
+    applyOperatorLoadout(joinOp);
+    enemies.forEach(e=>scene.remove(e.group));
+    enemies=[];
+    allies=[];
+    if(duelHostAvatar){
+      scene.remove(duelHostAvatar);
+      duelHostAvatar=null;
+    }
+    const theme=getLevel();
+    duelHostAvatar=
+      buildOperator(
+        0x2a3a4a,
+        hostOp.accent||'#7fd8ff',
+        theme.enemyType
+      );
+    scene.add(duelHostAvatar);
+    duelOppMaxHpMirror=hostOp.maxHp;
+    duelOppHpMirror=hostOp.maxHp;
+  }
+  resetDuelRound();
+  canvasEl.requestPointerLock();
+}
+function openDuelLobbyAsHost(){
+  document.getElementById('duelLobbyOverlay').style.display='block';
+  document.getElementById('duelLobbyTitle').textContent='HOSTING MATCH';
+  document.getElementById('duelLobbyCodeBlock').style.display='block';
+  document.getElementById('duelLobbyCode').textContent='-----';
+  document.getElementById('duelLobbyStatus').textContent='SETTING UP...';
+  document.getElementById('duelStartBtn').style.display='none';
+  duelRemoteOpIndex=0;
+  Net.onMessage=data=>{
+    if(!data||!data.t)
+      return;
+    if(data.t==='hello'){
+      duelRemoteOpIndex=data.opIndex||0;
+      document.getElementById('duelLobbyStatus').textContent=
+        'OPPONENT READY — VS '+
+        ((PLAYER_OPS[duelRemoteOpIndex]||{}).name||'UNKNOWN');
+      document.getElementById('duelStartBtn').style.display='inline-block';
+    }
+    else if(data.t==='in'&&duelMode&&Net.isHost){
+      remoteInput.keys=data.k||{};
+      remoteInput.yaw=data.yaw||0;
+      remoteInput.pitch=data.pitch||0;
+      remoteInput.fire=!!data.fire;
+      remoteInput.reload=!!data.reload;
+    }
+  };
+  Net.onClose=()=>{
+    if(duelMode){
+      handleDuelOpponentLeft();
+    }
+    else{
+      document.getElementById('duelLobbyStatus').textContent=
+        'OPPONENT DISCONNECTED.';
+      document.getElementById('duelStartBtn').style.display='none';
+    }
+  };
+  Net.hostGame(
+    code=>{
+      document.getElementById('duelLobbyCode').textContent=code;
+      document.getElementById('duelLobbyStatus').textContent=
+        'WAITING FOR OPPONENT TO JOIN...';
+    },
+    ()=>{
+      document.getElementById('duelLobbyStatus').textContent=
+        'OPPONENT CONNECTED — SAYING HELLO...';
+      Net.send({t:'hello',opIndex:selectedOperatorIndex});
+    },
+    ()=>{
+      document.getElementById('duelLobbyStatus').textContent=
+        'COULD NOT START HOSTING — CHECK YOUR CONNECTION AND TRY AGAIN.';
+    }
+  );
+}
+function openDuelLobbyAsJoin(code){
+  document.getElementById('duelLobbyOverlay').style.display='block';
+  document.getElementById('duelLobbyTitle').textContent='JOINING MATCH';
+  document.getElementById('duelLobbyCodeBlock').style.display='none';
+  document.getElementById('duelLobbyStatus').textContent=
+    'CONNECTING TO '+code+'...';
+  document.getElementById('duelStartBtn').style.display='none';
+  duelRemoteOpIndex=0;
+  Net.onMessage=data=>{
+    if(!data||!data.t)
+      return;
+    if(data.t==='hello'){
+      duelRemoteOpIndex=data.opIndex||0;
+      document.getElementById('duelLobbyStatus').textContent=
+        'CONNECTED — VS '+
+        ((PLAYER_OPS[duelRemoteOpIndex]||{}).name||'HOST')+
+        ' — WAITING FOR HOST TO START...';
+    }
+    else if(data.t==='matchStart'&&!Net.isHost){
+      const hostOp=
+        PLAYER_OPS[data.hostOpIndex]||PLAYER_OPS[0];
+      const joinOp=
+        PLAYER_OPS[data.joinOpIndex]||
+        PLAYER_OPS[selectedOperatorIndex]||
+        PLAYER_OPS[0];
+      beginDuelMatch(data.mapIndex||0,hostOp,joinOp);
+    }
+    else if(data.t==='snap'&&!Net.isHost&&duelMode){
+      applyDuelSnap(data);
+    }
+    else if(data.t==='roundEnd'&&!Net.isHost&&duelMode){
+      handleDuelRoundEnd(data);
+    }
+  };
+  Net.onClose=()=>{
+    if(duelMode){
+      handleDuelOpponentLeft();
+    }
+    else{
+      document.getElementById('duelLobbyStatus').textContent=
+        'DISCONNECTED FROM HOST.';
+    }
+  };
+  Net.joinGame(
+    code,
+    ()=>{
+      document.getElementById('duelLobbyStatus').textContent=
+        'CONNECTED — SAYING HELLO...';
+      Net.send({t:'hello',opIndex:selectedOperatorIndex});
+    },
+    ()=>{
+      document.getElementById('duelLobbyStatus').textContent=
+        'COULD NOT CONNECT — CHECK THE ROOM CODE AND TRY AGAIN.';
+    }
+  );
+}
+document
+  .getElementById('onlineBtn')
+  .addEventListener('click',()=>{
+    playUiClick();
+    document.getElementById('joinCodeRow').style.display='none';
+    document.getElementById('onlineMenuOverlay').style.display='block';
+  });
+document
+  .getElementById('onlineBackBtn')
+  .addEventListener('click',()=>{
+    playUiClick();
+    document.getElementById('onlineMenuOverlay').style.display='none';
+  });
+document
+  .getElementById('hostMatchBtn')
+  .addEventListener('click',()=>{
+    playUiClick();
+    document.getElementById('onlineMenuOverlay').style.display='none';
+    openDuelLobbyAsHost();
+  });
+document
+  .getElementById('joinMatchBtn')
+  .addEventListener('click',()=>{
+    playUiClick();
+    document.getElementById('joinCodeRow').style.display='block';
+  });
+document
+  .getElementById('joinConnectBtn')
+  .addEventListener('click',()=>{
+    const code=
+      document
+        .getElementById('joinCodeInput')
+        .value.trim().toUpperCase();
+    if(code.length<5)
+      return;
+    playUiClick();
+    document.getElementById('onlineMenuOverlay').style.display='none';
+    openDuelLobbyAsJoin(code);
+  });
+document
+  .getElementById('duelLobbyCancelBtn')
+  .addEventListener('click',()=>{
+    playUiClick();
+    Net.teardown();
+    document.getElementById('duelLobbyOverlay').style.display='none';
+  });
+document
+  .getElementById('duelStartBtn')
+  .addEventListener('click',()=>{
+    if(!Net.isHost||!Net.connected)
+      return;
+    playUiClick();
+    const mapIndex=selectedMapIndex;
+    const hostOp=PLAYER_OPS[selectedOperatorIndex];
+    const joinOp=PLAYER_OPS[duelRemoteOpIndex]||PLAYER_OPS[0];
+    Net.send({
+      t:'matchStart',
+      mapIndex,
+      hostOpIndex:selectedOperatorIndex,
+      joinOpIndex:duelRemoteOpIndex
+    });
+    beginDuelMatch(mapIndex,hostOp,joinOp);
   });
 /* =========================================================
    START
