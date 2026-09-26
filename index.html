@@ -49,6 +49,16 @@ canvas{
   opacity:0;
   transition:opacity .3s;
 }
+/* FORTIFY OVERLAY */
+#fortifyOverlay{
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  z-index:4;
+  background:radial-gradient(circle, rgba(255,215,80,.04) 30%, rgba(220,170,40,.3) 100%);
+  opacity:0;
+  transition:opacity .3s;
+}
 /* CROSSHAIR */
 #crosshair{
   position:fixed;
@@ -724,6 +734,12 @@ canvas{
 .opCard.selected{
   box-shadow:0 0 16px rgba(201,217,74,.3);
 }
+.opCard.locked{
+  opacity:.6;
+}
+.opCard.locked:hover{
+  transform:none;
+}
 .opCard h3{
   margin:0 0 4px;
   letter-spacing:2px;
@@ -864,6 +880,17 @@ canvas{
 .skinChip.selected .skinName{
   color:#c9d94a;
 }
+.skinChip.locked{
+  cursor:not-allowed;
+  opacity:.45;
+}
+.skinChip.locked .skinName{
+  color:#7a7a6c;
+}
+.skinChip .rarityTag{
+  font-size:8px;
+  letter-spacing:.5px;
+}
 #menuFooter{
   margin-top:24px;
   display:flex;
@@ -954,15 +981,22 @@ canvas{
 <div id="shopOverlay" style="display:none;position:fixed;inset:0;background:rgba(6,8,6,.86);z-index:150000;font-family:inherit;">
   <div style="max-width:820px;margin:5vh auto;background:#11150f;border:1px solid #2a3524;border-radius:10px;padding:24px 28px 30px;max-height:88vh;overflow-y:auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-      <h2 style="margin:0;color:#c9d94a;letter-spacing:.05em;font-size:20px;">FINISHER SHOP</h2>
+      <h2 style="margin:0;color:#c9d94a;letter-spacing:.05em;font-size:20px;">SHOP</h2>
       <button id="shopCloseBtn" style="background:none;border:1px solid #3a4a38;color:#9aa89a;border-radius:4px;padding:5px 12px;cursor:pointer;font:600 12px system-ui,sans-serif;">CLOSE</button>
     </div>
     <p style="color:#8a9a86;font-size:12px;margin:2px 0 18px;">
-      Spend tokens earned from kills and round/match wins on a finisher — a kill-confirm flourish that plays whenever you get the elimination. Only one can be equipped at a time.
+      Spend tokens earned from kills and round/match wins on finishers, Alpha Packs and unlockable operators.
     </p>
     <div style="color:#ffd54a;font:600 13px system-ui,sans-serif;margin-bottom:14px;">
       &#9733; BALANCE: <span id="shopTokenVal">0</span> TOKENS
     </div>
+    <h3 style="margin:4px 0 6px;color:#8fe8ff;letter-spacing:.04em;font-size:15px;">&#10052; ALPHA PACKS</h3>
+    <p style="color:#8a9aa0;font-size:11px;margin:0 0 10px;">
+      Each pack contains one random ICE weapon skin. Odds, common to rarest: GREEN ICE, PINK ICE, RED ICE, BLACK ICE.
+    </p>
+    <div id="alphaPackGrid" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;"></div>
+    <div id="alphaPackReveal" style="display:none;margin:8px 0 4px;padding:14px;border-radius:8px;text-align:center;"></div>
+    <h3 style="margin:22px 0 8px;color:#c9d94a;letter-spacing:.04em;font-size:15px;">FINISHERS</h3>
     <div id="shopGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;"></div>
   </div>
 </div>
@@ -1035,6 +1069,7 @@ canvas{
 <div id="vignette"></div>
 <div id="cloakOverlay"></div>
 <div id="overdriveOverlay"></div>
+<div id="fortifyOverlay"></div>
 <div id="crosshair"></div>
 <div id="scopeOverlay">
   <i class="scopeBlackout"></i>
@@ -3723,6 +3758,7 @@ const player={
   cloakTimer:0,
   intelTimer:0,
   overdriveTimer:0,
+  fortifyTimer:0,
   aimT:0,
   aimFov:50,
   recoilPitch:0,
@@ -4537,6 +4573,13 @@ function updateWeaponModel(op){
     gunGroup.add(suppressor);
     weaponExtras.push(suppressor);
   }
+  else if(op.id==='wraith'){
+    gunGroup.scale.set(.82,.86,.7);
+  }
+  else if(op.id==='titan'){
+    gunGroup.scale.set(1.15,1.12,1.05);
+    barrel.scale.set(1.3,1.3,1);
+  }
 }
 /* =========================================================
    AUDIO
@@ -4628,6 +4671,8 @@ function weaponSoundType(op){
     case 'vesper':return 'smg_silenced';
     case 'warden':return 'dmr';
     case 'ember':return 'burst';
+    case 'wraith':return 'smg';
+    case 'titan':return 'heavy';
     case 'juggernaut':return 'heavy';
     default:return 'rifle';
   }
@@ -5381,7 +5426,13 @@ function botFireAt(shooter,target){
     if(player.spawnGrace>0)
       return;
     const wasAlive=player.hp>0;
-    player.hp-=dmg;
+    /*
+      FORTIFY (Titan's ability) halves incoming bot damage while
+      active. A headshot's flat 9999 still easily kills through
+      it — this is body-damage resistance, not headshot immunity.
+    */
+    player.hp-=
+      dmg*(player.fortifyTimer>0?.5:1);
     document
       .getElementById('damageOverlay')
       .style.opacity=.7;
@@ -6287,6 +6338,12 @@ function triggerAbility(){
     case 'vesper':
       intelScan();
       break;
+    case 'wraith':
+      useStimShot();
+      break;
+    case 'titan':
+      activateFortify();
+      break;
   }
 }
 function throwFragCharge(){
@@ -6482,6 +6539,32 @@ function intelScan(){
   showMsg('DEFENDER POSITIONS TRACKED',1600);
 }
 /*
+  STIM SHOT (Wraith) — an instant field heal rather than a
+  timed buff, so it just adjusts player.hp directly and reports
+  how much actually landed (capped at maxHp, so topping off from
+  90/100 correctly reports +10, not the full +40).
+*/
+function useStimShot(){
+  const before=player.hp;
+  player.hp=Math.min(player.maxHp,player.hp+40);
+  showMsg(
+    'STIM SHOT — +'+Math.round(player.hp-before)+' HP',
+    1400
+  );
+}
+/*
+  FORTIFY (Titan) — a timed damage-resistance window, same
+  timer-field-plus-overlay shape as CLOAK PULSE/OVERDRIVE (see
+  activateCloak()/activateOverdrive() above): set the timer here,
+  update() ticks it down and drives #fortifyOverlay, and the
+  actual damage reduction is applied at the one place bots damage
+  the player (see the fortifyTimer check in botFireAt()).
+*/
+function activateFortify(){
+  player.fortifyTimer=6;
+  showMsg('FORTIFY ACTIVE — DAMAGE RESISTANT',1400);
+}
+/*
   SCAN OUTLINES — while INTEL SCAN is active, draw a glowing
   wireframe box around every alive defender's silhouette
   with depthTest off, so it renders straight through walls
@@ -6603,6 +6686,7 @@ function resetRound(){
   player.cloakTimer=0;
   player.intelTimer=0;
   player.overdriveTimer=0;
+  player.fortifyTimer=0;
   player.aimT=0;
   player.recoilPitch=0;
   player.recoilYaw=0;
@@ -6636,6 +6720,9 @@ function resetRound(){
     .style.opacity=0;
   document
     .getElementById('overdriveOverlay')
+    .style.opacity=0;
+  document
+    .getElementById('fortifyOverlay')
     .style.opacity=0;
   document
     .getElementById('intelHud')
@@ -6873,6 +6960,17 @@ function update(){
   else{
     document
       .getElementById('overdriveOverlay')
+      .style.opacity=0;
+  }
+  if(player.fortifyTimer>0){
+    player.fortifyTimer-=dt;
+    document
+      .getElementById('fortifyOverlay')
+      .style.opacity=.9;
+  }
+  else{
+    document
+      .getElementById('fortifyOverlay')
       .style.opacity=0;
   }
   if(player.intelTimer>0){
@@ -7719,9 +7817,118 @@ const PLAYER_OPS=[
       cooldown:24,
       desc:'Reveals the distance and bearing of every living defender for several seconds.'
     }
+  },
+  /*
+    UNLOCKABLE OPERATORS — a token sink alongside the finisher
+    shop and Alpha Packs (see buildOperatorGridInto()/buyOperator()
+    below). The `cost` field is what marks an operator as locked;
+    the original six above have none, so isOperatorOwned() treats
+    them as always owned.
+  */
+  {
+    id:'wraith',
+    name:'WRAITH',
+    role:'SCOUT',
+    accent:'#5affc9',
+    cost:300,
+    maxHp:80,
+    speedMul:1.2,
+    weapon:{
+      name:'VK-9 PDW',
+      dmg:15,
+      fireCd:.08,
+      mag:35,
+      reload:1.1,
+      pellets:1,
+      spread:.01,
+      range:38,
+      aimFov:58,
+      sight:'reflex',
+      recoil:{pitch:.012,yaw:.007}
+    },
+    ability:{
+      name:'STIM SHOT',
+      cooldown:20,
+      desc:'Instantly restores 40 HP — the fastest way to sustain through a firefight.'
+    }
+  },
+  {
+    id:'titan',
+    name:'TITAN',
+    role:'HEAVY',
+    accent:'#ff5a5a',
+    cost:450,
+    maxHp:130,
+    speedMul:.85,
+    weapon:{
+      name:'HX-45 LMG',
+      dmg:19,
+      fireCd:.1,
+      mag:60,
+      reload:2.6,
+      pellets:1,
+      spread:.018,
+      range:55,
+      aimFov:56,
+      sight:'holo',
+      recoil:{pitch:.02,yaw:.012}
+    },
+    ability:{
+      name:'FORTIFY',
+      cooldown:26,
+      desc:'Cuts incoming damage in half for a few seconds — stand your ground and soak it up.'
+    }
   }
 ];
 let selectedOperatorIndex=0;
+/* =========================================================
+   OPERATOR UNLOCKS — a token sink for operators that have a
+   `cost` field (see WRAITH/TITAN above). The original six have
+   no cost and are always owned. Persisted separately from
+   tokens/finishers/skins so each collection resets on its own
+   key if it ever needs to.
+========================================================= */
+const OPERATORS_OWNED_KEY='bp_operators_owned_v1';
+let ownedOperators=[];
+function loadOperators(){
+  try{
+    const raw=localStorage.getItem(OPERATORS_OWNED_KEY);
+    ownedOperators=raw?JSON.parse(raw):[];
+    if(!Array.isArray(ownedOperators))
+      ownedOperators=[];
+  }
+  catch(e){
+    ownedOperators=[];
+  }
+}
+function saveOperators(){
+  try{
+    localStorage.setItem(
+      OPERATORS_OWNED_KEY,
+      JSON.stringify(ownedOperators)
+    );
+  }
+  catch(e){}
+}
+function isOperatorOwned(op){
+  return !op.cost||ownedOperators.includes(op.id);
+}
+function buyOperator(op){
+  if(!op.cost||ownedOperators.includes(op.id))
+    return;
+  if(tokens<op.cost)
+    return;
+  tokens-=op.cost;
+  saveTokens();
+  ownedOperators.push(op.id);
+  saveOperators();
+  updateTokenHud();
+  playUiClick();
+  showMsg(op.name+' UNLOCKED',1600);
+  buildOperatorGridInto('operatorGrid');
+  buildOperatorGridInto('bossLifeOperatorGrid');
+}
+loadOperators();
 function applyOperatorLoadout(op){
   killCam.active=false;
   killCam.killer=null;
@@ -7767,6 +7974,7 @@ function applyOperatorLoadout(op){
   player.cloakTimer=0;
   player.intelTimer=0;
   player.overdriveTimer=0;
+  player.fortifyTimer=0;
   player.aimT=0;
   player.recoilPitch=0;
   player.recoilYaw=0;
@@ -8145,6 +8353,8 @@ document
   .addEventListener('click',()=>{
     const op=
       PLAYER_OPS[selectedOperatorIndex];
+    if(!isOperatorOwned(op))
+      return;
     applyOperatorLoadout(op);
     document
       .getElementById('menuScreen')
@@ -8157,9 +8367,12 @@ document
 /* =========================================================
    TOKENS — a persistent currency (localStorage-backed, so
    it survives a page reload) earned from kills and round/
-   match wins, spent in the finisher shop below.
+   match wins, spent on finishers, Alpha Packs and unlockable
+   operators. Bumped to v2 to reset everyone's balance to 0 now
+   that there's a bigger economy to spend it in (new operators,
+   Alpha Packs) — the old v1 value is simply never read again.
 ========================================================= */
-const TOKENS_KEY='bp_tokens_v1';
+const TOKENS_KEY='bp_tokens_v2';
 let tokens=0;
 function loadTokens(){
   try{
@@ -8297,7 +8510,131 @@ function equipFinisher(id){
   renderShop();
   playUiClick();
 }
+/* =========================================================
+   ALPHA PACKS — a loot-pack sink for tokens that grants one
+   random ICE weapon skin per pack, weighted toward the common
+   end so BLACK ICE (legendary) stays the rarest possible pull.
+   Opening a pack you've already fully unlocked via a duplicate
+   roll refunds part of its cost rather than doing nothing, so
+   tokens are never simply wasted once every ice skin is owned.
+========================================================= */
+const ALPHA_PACK_COST=120;
+const ALPHA_PACK_DUPE_REFUND=.4;
+const ICE_SKIN_POOL=[
+  {id:'green_ice',weight:55},
+  {id:'pink_ice',weight:28},
+  {id:'red_ice',weight:13},
+  {id:'black_ice',weight:4}
+];
+function rollAlphaPack(){
+  const total=
+    ICE_SKIN_POOL.reduce((s,e)=>s+e.weight,0);
+  let r=Math.random()*total;
+  for(const entry of ICE_SKIN_POOL){
+    if(r<entry.weight)
+      return entry.id;
+    r-=entry.weight;
+  }
+  return ICE_SKIN_POOL[0].id;
+}
+function buyAlphaPack(){
+  if(tokens<ALPHA_PACK_COST)
+    return;
+  tokens-=ALPHA_PACK_COST;
+  saveTokens();
+  const id=rollAlphaPack();
+  const skin=OPERATOR_SKINS.find(s=>s.id===id);
+  const alreadyOwned=ownedSkins.includes(id);
+  let refund=0;
+  if(alreadyOwned){
+    refund=Math.round(ALPHA_PACK_COST*ALPHA_PACK_DUPE_REFUND);
+    tokens+=refund;
+    saveTokens();
+  }
+  else{
+    ownedSkins.push(id);
+    saveSkins();
+  }
+  updateTokenHud();
+  playUiClick();
+  renderShop();
+  buildSkinMenu();
+  showAlphaPackReveal(skin,alreadyOwned,refund);
+}
+function showAlphaPackReveal(skin,alreadyOwned,refund){
+  const panel=document.getElementById('alphaPackReveal');
+  if(!panel)
+    return;
+  const info=
+    SKIN_RARITY_INFO[skin.rarity]||
+    {label:'',color:'#e6e6d8'};
+  panel.style.display='block';
+  panel.style.border='1px solid '+info.color;
+  panel.style.background=
+    'radial-gradient(circle, rgba(255,255,255,.06), rgba(0,0,0,.3))';
+  panel.innerHTML=
+    '<div style="font:700 11px system-ui,sans-serif;color:'+info.color+';letter-spacing:.1em;">'+
+    info.label+'</div>'+
+    '<div style="font:700 18px system-ui,sans-serif;color:#fff;margin:4px 0;">'+
+    skin.name+'</div>'+
+    '<div style="font:12px system-ui,sans-serif;color:#9aa8a4;">'+
+    (
+      alreadyOwned
+      ?'ALREADY OWNED — REFUNDED '+refund+' TOKENS'
+      :'NEW SKIN UNLOCKED'
+    )+
+    '</div>';
+  clearTimeout(showAlphaPackReveal._t);
+  showAlphaPackReveal._t=
+    setTimeout(()=>{panel.style.display='none';},2600);
+}
+function renderAlphaPackShop(){
+  const grid=document.getElementById('alphaPackGrid');
+  if(!grid)
+    return;
+  grid.innerHTML='';
+  const ownedIceCount=
+    OPERATOR_SKINS
+      .filter(s=>s.packOnly)
+      .filter(s=>ownedSkins.includes(s.id))
+      .length;
+  const totalIce=
+    OPERATOR_SKINS.filter(s=>s.packOnly).length;
+  const card=document.createElement('div');
+  card.style.cssText=
+    'background:#0d1720;border:1px solid #1f3a4a;border-radius:8px;'+
+    'padding:14px;display:flex;flex-direction:column;gap:8px;'+
+    'min-width:220px;flex:1;';
+  const title=document.createElement('div');
+  title.style.cssText=
+    'font:700 14px system-ui,sans-serif;color:#8fe8ff;letter-spacing:.03em;';
+  title.textContent='ALPHA PACK';
+  const desc=document.createElement('div');
+  desc.style.cssText=
+    'font:12px system-ui,sans-serif;color:#8a9aa0;flex:1;';
+  desc.textContent=
+    'One random ICE weapon skin. Owned: '+
+    ownedIceCount+'/'+totalIce+'.';
+  const btn=document.createElement('button');
+  const afford=tokens>=ALPHA_PACK_COST;
+  btn.style.cssText=
+    'font:700 12px system-ui,sans-serif;border-radius:5px;'+
+    'padding:8px;cursor:'+(afford?'pointer':'not-allowed')+';'+
+    'border:1px solid transparent;background:'+
+    (afford?'#1f3a4a':'#141a1e')+';color:'+
+    (afford?'#8fe8ff':'#4a5a60')+';';
+  btn.textContent=
+    (afford?'OPEN PACK — ':'NEED ')+ALPHA_PACK_COST+' TOKENS';
+  btn.disabled=!afford;
+  if(afford)
+    btn.onclick=buyAlphaPack;
+  card.appendChild(title);
+  card.appendChild(desc);
+  card.appendChild(btn);
+  grid.appendChild(card);
+}
 function renderShop(){
+  renderAlphaPackShop();
   const grid=document.getElementById('shopGrid');
   if(!grid)
     return;
@@ -8740,20 +9077,35 @@ function buildOperatorGridInto(containerId){
     document.getElementById(containerId);
   grid.innerHTML='';
   PLAYER_OPS.forEach((op,i)=>{
+    const owned=isOperatorOwned(op);
     const card=
       document.createElement('div');
     card.className=
       'opCard'+
-      (i===selectedOperatorIndex?' selected':'');
+      (i===selectedOperatorIndex&&owned?' selected':'')+
+      (owned?'':' locked');
     card.style.borderTopColor=op.accent;
     card.innerHTML=
-      '<h3 style="color:'+op.accent+'">'+op.name+'</h3>'+
+      '<h3 style="color:'+op.accent+'">'+op.name+
+      (owned?'':' &#128274;')+'</h3>'+
       '<div class="role">'+op.role+'</div>'+
       '<div class="stat">WEAPON: '+op.weapon.name+'</div>'+
       '<div class="stat">HP: '+op.maxHp+' &middot; SPD: '+Math.round(op.speedMul*100)+'%</div>'+
       '<div class="stat">ABILITY [G]: '+op.ability.name+'</div>'+
-      '<div class="abilityDesc">'+op.ability.desc+'</div>';
+      '<div class="abilityDesc">'+op.ability.desc+'</div>'+
+      (
+        owned
+        ?''
+        :'<div class="stat" style="margin-top:6px;font-weight:700;color:'+
+          (tokens>=op.cost?'#c9d94a':'#ff8a6a')+';">'+
+          (tokens>=op.cost?'CLICK TO UNLOCK — ':'NEED ')+op.cost+' TOKENS'+
+          '</div>'
+      );
     card.addEventListener('click',()=>{
+      if(!owned){
+        buyOperator(op);
+        return;
+      }
       selectedOperatorIndex=i;
       document
         .querySelectorAll('.opCard')
@@ -8818,19 +9170,98 @@ const OPERATOR_SKINS=[
     id:'inferno',name:'INFERNO',base:0x241010,panel:0x361714,trim:0xff5020,
     metalness:.55,roughness:.35,
     trimEmissive:0xff4010,trimEmissiveIntensity:.9
+  },
+  /*
+    ALPHA PACK skins — rarity-tiered ICE cosmetics, only
+    obtainable by opening an Alpha Pack with tokens (see the
+    ALPHA PACKS section of the shop below), never freely
+    selectable like the eight above. `rarity`/`packOnly` drive
+    the ownership defaults and the shop's rarity odds/coloring.
+  */
+  {
+    id:'green_ice',name:'GREEN ICE',rarity:'common',packOnly:true,
+    base:0xdcf5ea,panel:0xb8e8d2,trim:0x1fff8a,
+    metalness:.65,roughness:.12,
+    trimEmissive:0x2effa0,trimEmissiveIntensity:.75
+  },
+  {
+    id:'pink_ice',name:'PINK ICE',rarity:'uncommon',packOnly:true,
+    base:0xf7ecf5,panel:0xecd0e8,trim:0xff5ad0,
+    metalness:.68,roughness:.11,
+    trimEmissive:0xff6ae0,trimEmissiveIntensity:.8
+  },
+  {
+    id:'red_ice',name:'RED ICE',rarity:'rare',packOnly:true,
+    base:0xf7e4e4,panel:0xe8b8b8,trim:0xff2a2a,
+    metalness:.7,roughness:.1,
+    trimEmissive:0xff3030,trimEmissiveIntensity:.85
+  },
+  {
+    id:'black_ice',name:'BLACK ICE',rarity:'legendary',packOnly:true,
+    base:0x0a0d10,panel:0x141a1e,trim:0x8fe8ff,
+    metalness:.88,roughness:.06,
+    trimEmissive:0xaef0ff,trimEmissiveIntensity:1
   }
 ];
+/*
+  RARITY DISPLAY — shared by the skin picker's locked chips and
+  the Alpha Pack shop/reveal UI, so a rarity is always labeled
+  and colored consistently everywhere it shows up.
+*/
+const SKIN_RARITY_INFO={
+  common:{label:'COMMON',color:'#8fe0a8'},
+  uncommon:{label:'UNCOMMON',color:'#ff9ae6'},
+  rare:{label:'RARE',color:'#ff6a6a'},
+  legendary:{label:'LEGENDARY',color:'#aef0ff'}
+};
 let selectedSkinIndex=0;
+/* =========================================================
+   SKIN UNLOCKS — the eight curated skins above are owned by
+   default (grandfathered in for everyone); the four Alpha Pack
+   ice skins start locked and can only be earned by opening a
+   pack in the shop (see ALPHA PACKS below).
+========================================================= */
+const SKINS_OWNED_KEY='bp_skins_owned_v1';
+let ownedSkins=[];
+function defaultOwnedSkins(){
+  return OPERATOR_SKINS.filter(s=>!s.packOnly).map(s=>s.id);
+}
+function loadSkins(){
+  try{
+    const raw=localStorage.getItem(SKINS_OWNED_KEY);
+    ownedSkins=raw?JSON.parse(raw):null;
+    if(!Array.isArray(ownedSkins))
+      ownedSkins=defaultOwnedSkins();
+  }
+  catch(e){
+    ownedSkins=defaultOwnedSkins();
+  }
+}
+function saveSkins(){
+  try{
+    localStorage.setItem(
+      SKINS_OWNED_KEY,
+      JSON.stringify(ownedSkins)
+    );
+  }
+  catch(e){}
+}
+function isSkinOwned(skin){
+  return !skin.packOnly||ownedSkins.includes(skin.id);
+}
+loadSkins();
 function buildSkinMenu(){
   const grid=
     document.getElementById('skinGrid');
   grid.innerHTML='';
   OPERATOR_SKINS.forEach((skin,i)=>{
+    const owned=isSkinOwned(skin);
     const chip=
       document.createElement('div');
     chip.className=
       'skinChip'+
-      (i===selectedSkinIndex?' selected':'');
+      (i===selectedSkinIndex&&owned?' selected':'')+
+      (owned?'':' locked');
     const swatch=
       document.createElement('div');
     swatch.className='skinSwatch';
@@ -8839,10 +9270,22 @@ function buildSkinMenu(){
     const name=
       document.createElement('div');
     name.className='skinName';
-    name.textContent=skin.name;
+    name.textContent=
+      (owned?'':'\u{1F512} ')+skin.name;
     chip.appendChild(swatch);
     chip.appendChild(name);
+    if(skin.rarity){
+      const rarity=
+        document.createElement('div');
+      rarity.className='rarityTag';
+      const info=SKIN_RARITY_INFO[skin.rarity];
+      rarity.style.color=info?info.color:'#9a9a86';
+      rarity.textContent=info?info.label:'';
+      chip.appendChild(rarity);
+    }
     chip.addEventListener('click',()=>{
+      if(!owned)
+        return;
       selectedSkinIndex=i;
       document
         .querySelectorAll('.skinChip')
@@ -8923,6 +9366,8 @@ document
   .addEventListener('click',()=>{
     const op=
       PLAYER_OPS[selectedOperatorIndex];
+    if(!isOperatorOwned(op))
+      return;
     applyOperatorLoadout(op);
     player.team=selectedSide;
     round=1;
