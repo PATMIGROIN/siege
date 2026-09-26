@@ -891,6 +891,88 @@ canvas{
   font-size:8px;
   letter-spacing:.5px;
 }
+.packCard{
+  background:#0d1310;
+  border-radius:8px;
+  padding:14px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  min-width:220px;
+  flex:1;
+}
+.packCard .packName{
+  font:700 14px system-ui,sans-serif;
+  letter-spacing:.03em;
+}
+.packCard .packTagline{
+  font:11.5px system-ui,sans-serif;
+  color:#8a9aa0;
+  flex:1;
+}
+.packCard .packOwned{
+  font:10px system-ui,sans-serif;
+  color:#6a7a76;
+}
+.packCard button{
+  font:700 12px system-ui,sans-serif;
+  border-radius:5px;
+  padding:8px;
+  border:1px solid transparent;
+}
+#packSpinOverlay{
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:160000;
+  background:rgba(4,6,8,.92);
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  font-family:inherit;
+}
+#packSpinViewport{
+  position:relative;
+  width:560px;
+  max-width:88vw;
+  height:96px;
+  overflow:hidden;
+  background:#0a0d0a;
+  border:1px solid #2a3524;
+  border-radius:8px;
+}
+#packSpinTrack{
+  position:absolute;
+  top:0;
+  left:0;
+  height:100%;
+  display:flex;
+  will-change:transform;
+}
+.packSpinTile{
+  width:90px;
+  height:100%;
+  flex:0 0 auto;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  box-sizing:border-box;
+  border-right:1px solid #1a201a;
+}
+.packSpinTile .swatch{
+  width:38px;
+  height:26px;
+  border:1px solid rgba(0,0,0,.5);
+}
+.packSpinTile .label{
+  font-size:7.5px;
+  letter-spacing:.5px;
+  color:#9a9a86;
+  text-align:center;
+  padding:0 3px;
+}
 #menuFooter{
   margin-top:24px;
   display:flex;
@@ -985,19 +1067,32 @@ canvas{
       <button id="shopCloseBtn" style="background:none;border:1px solid #3a4a38;color:#9aa89a;border-radius:4px;padding:5px 12px;cursor:pointer;font:600 12px system-ui,sans-serif;">CLOSE</button>
     </div>
     <p style="color:#8a9a86;font-size:12px;margin:2px 0 18px;">
-      Spend tokens earned from kills and round/match wins on finishers, Alpha Packs and unlockable operators.
+      Spend tokens earned from kills and round/match wins on finishers, loot packs and unlockable operators. Every weapon skin — including the eight original finishes — is now earned through a pack; none are free by default.
     </p>
     <div style="color:#ffd54a;font:600 13px system-ui,sans-serif;margin-bottom:14px;">
       &#9733; BALANCE: <span id="shopTokenVal">0</span> TOKENS
     </div>
-    <h3 style="margin:4px 0 6px;color:#8fe8ff;letter-spacing:.04em;font-size:15px;">&#10052; ALPHA PACKS</h3>
-    <p style="color:#8a9aa0;font-size:11px;margin:0 0 10px;">
-      Each pack contains one random ICE weapon skin. Odds, common to rarest: GREEN ICE, PINK ICE, RED ICE, BLACK ICE.
-    </p>
-    <div id="alphaPackGrid" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px;"></div>
-    <div id="alphaPackReveal" style="display:none;margin:8px 0 4px;padding:14px;border-radius:8px;text-align:center;"></div>
+    <div style="border:1px solid #1f2a1c;border-radius:9px;padding:14px 14px 16px;margin-bottom:22px;background:rgba(20,26,18,.4);">
+      <h3 style="margin:0 0 6px;color:#8fe8ff;letter-spacing:.04em;font-size:15px;">&#10052; LOOT PACKS</h3>
+      <p style="color:#8a9aa0;font-size:11px;margin:0 0 12px;">
+        Three independent packs, each with its own skin pool and its own rarest pull. Odds are shown honestly per pack below — no pack is required to play, only to customize how you look.
+      </p>
+      <div id="packsGrid" style="display:flex;gap:12px;flex-wrap:wrap;"></div>
+    </div>
     <h3 style="margin:22px 0 8px;color:#c9d94a;letter-spacing:.04em;font-size:15px;">FINISHERS</h3>
     <div id="shopGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;"></div>
+  </div>
+</div>
+<div id="packSpinOverlay">
+  <div id="packSpinTitle" style="font:700 13px system-ui,sans-serif;letter-spacing:.15em;color:#c9c9b0;margin-bottom:14px;">OPENING PACK...</div>
+  <div id="packSpinViewport">
+    <div id="packSpinTrack"></div>
+    <div style="position:absolute;top:0;bottom:0;left:50%;width:2px;background:#c9d94a;box-shadow:0 0 10px #c9d94a;transform:translateX(-1px);pointer-events:none;"></div>
+  </div>
+  <div id="packSpinResult" style="display:none;margin-top:16px;text-align:center;"></div>
+  <div style="margin-top:18px;display:flex;gap:10px;">
+    <button id="packSpinSkipBtn" style="font:600 11px system-ui,sans-serif;padding:7px 14px;border-radius:4px;border:1px solid #3a4a38;background:#171d15;color:#9aa89a;cursor:pointer;">SKIP</button>
+    <button id="packSpinCloseBtn" style="display:none;font:700 12px system-ui,sans-serif;padding:8px 20px;border-radius:4px;border:none;background:#c9d94a;color:#0c0f0a;cursor:pointer;">CONTINUE</button>
   </div>
 </div>
 <div id="onlineMenuOverlay" style="display:none;position:fixed;inset:0;background:rgba(6,8,10,.88);z-index:150000;font-family:inherit;">
@@ -8511,43 +8606,70 @@ function equipFinisher(id){
   playUiClick();
 }
 /* =========================================================
-   ALPHA PACKS — a loot-pack sink for tokens that grants one
-   random ICE weapon skin per pack, weighted toward the common
-   end so BLACK ICE (legendary) stays the rarest possible pull.
-   Opening a pack you've already fully unlocked via a duplicate
-   roll refunds part of its cost rather than doing nothing, so
-   tokens are never simply wasted once every ice skin is owned.
+   LOOT PACKS — three independent token sinks, each granting one
+   random weapon skin from its own pool. Every pack is weighted
+   toward its own common end so its named rarest skin (BLACK ICE,
+   PRISM CIRCUIT, PRESTIGE CHROME) stays a genuinely rare pull —
+   the odds below are the real odds used by rollPack(), nothing
+   is shown to the player that isn't true. Opening a pack you've
+   already fully unlocked via a duplicate roll refunds part of
+   its cost rather than doing nothing, so tokens are never simply
+   wasted once a pack's whole pool is owned.
 ========================================================= */
-const ALPHA_PACK_COST=120;
 const ALPHA_PACK_DUPE_REFUND=.4;
-const ICE_SKIN_POOL=[
-  {id:'green_ice',weight:55},
-  {id:'pink_ice',weight:28},
-  {id:'red_ice',weight:13},
-  {id:'black_ice',weight:4}
+const ALPHA_PACKS=[
+  {
+    id:'alpha',name:'ALPHA PACK',cost:120,accent:'#8fe8ff',
+    tagline:'The full original wardrobe — all eight standard finishes — plus a shot at the ICE tier.',
+    pool:[
+      {id:'tactical',weight:16},{id:'desert',weight:16},{id:'arctic',weight:16},
+      {id:'woodland',weight:16},{id:'crimson',weight:12},{id:'gold',weight:10},
+      {id:'shadow',weight:8},{id:'inferno',weight:6},
+      {id:'green_ice',weight:40},{id:'pink_ice',weight:20},
+      {id:'red_ice',weight:8},{id:'black_ice',weight:2}
+    ]
+  },
+  {
+    id:'bravo',name:'BRAVO PACK',cost:200,accent:'#ffb347',
+    tagline:'CIRCUIT-line finishes. PRISM CIRCUIT is this pack\'s rarest pull.',
+    pool:[
+      {id:'circuit_bronze',weight:55},{id:'circuit_silver',weight:28},
+      {id:'circuit_gold',weight:13},{id:'circuit_prism',weight:4}
+    ]
+  },
+  {
+    id:'vantage',name:'VANTAGE PACK',cost:320,accent:'#ff5ad0',
+    tagline:'CHROME-line finishes. PRESTIGE CHROME is this pack\'s rarest pull.',
+    pool:[
+      {id:'chrome_slate',weight:55},{id:'chrome_azure',weight:28},
+      {id:'chrome_crimson',weight:13},{id:'chrome_prestige',weight:4}
+    ]
+  }
 ];
-function rollAlphaPack(){
+function rollPack(pack){
   const total=
-    ICE_SKIN_POOL.reduce((s,e)=>s+e.weight,0);
+    pack.pool.reduce((s,e)=>s+e.weight,0);
   let r=Math.random()*total;
-  for(const entry of ICE_SKIN_POOL){
+  for(const entry of pack.pool){
     if(r<entry.weight)
       return entry.id;
     r-=entry.weight;
   }
-  return ICE_SKIN_POOL[0].id;
+  return pack.pool[0].id;
 }
-function buyAlphaPack(){
-  if(tokens<ALPHA_PACK_COST)
+const packSpin={active:false,resolved:false};
+function buyPack(packId){
+  const pack=ALPHA_PACKS.find(p=>p.id===packId);
+  if(!pack||packSpin.active||tokens<pack.cost)
     return;
-  tokens-=ALPHA_PACK_COST;
+  tokens-=pack.cost;
   saveTokens();
-  const id=rollAlphaPack();
+  const id=rollPack(pack);
   const skin=OPERATOR_SKINS.find(s=>s.id===id);
   const alreadyOwned=ownedSkins.includes(id);
   let refund=0;
   if(alreadyOwned){
-    refund=Math.round(ALPHA_PACK_COST*ALPHA_PACK_DUPE_REFUND);
+    refund=Math.round(pack.cost*ALPHA_PACK_DUPE_REFUND);
     tokens+=refund;
     saveTokens();
   }
@@ -8559,20 +8681,105 @@ function buyAlphaPack(){
   playUiClick();
   renderShop();
   buildSkinMenu();
-  showAlphaPackReveal(skin,alreadyOwned,refund);
+  openPackSpin(pack,skin,alreadyOwned,refund);
 }
-function showAlphaPackReveal(skin,alreadyOwned,refund){
-  const panel=document.getElementById('alphaPackReveal');
-  if(!panel)
+/*
+  The spin is a straightforward, honest reel: every filler tile
+  is drawn from the SAME weighted pool the real result came from
+  (rollPack again, per tile), so rarer skins really do show up
+  less often on the strip — nothing is stacked or nudged toward
+  making a near-miss more likely than the true odds already make
+  it. It always lands exactly on the skin already decided by
+  buyPack() above; the animation is presentation, not the roll.
+*/
+function openPackSpin(pack,skin,alreadyOwned,refund){
+  const overlay=document.getElementById('packSpinOverlay');
+  const viewport=document.getElementById('packSpinViewport');
+  const track=document.getElementById('packSpinTrack');
+  const title=document.getElementById('packSpinTitle');
+  const resultEl=document.getElementById('packSpinResult');
+  const skipBtn=document.getElementById('packSpinSkipBtn');
+  const closeBtn=document.getElementById('packSpinCloseBtn');
+  if(!overlay||!track)
     return;
+  packSpin.active=true;
+  packSpin.resolved=false;
+  title.textContent=pack.name+' — OPENING...';
+  title.style.color='#c9c9b0';
+  resultEl.style.display='none';
+  closeBtn.style.display='none';
+  skipBtn.style.display='inline-block';
+  overlay.style.display='flex';
+  const TILE_W=90;
+  const TOTAL_TILES=42;
+  const LANDING_INDEX=36;
+  track.innerHTML='';
+  const frag=document.createDocumentFragment();
+  for(let i=0;i<TOTAL_TILES;i++){
+    const tileId=i===LANDING_INDEX?skin.id:rollPack(pack);
+    const tileSkin=OPERATOR_SKINS.find(s=>s.id===tileId)||skin;
+    const info=SKIN_RARITY_INFO[tileSkin.rarity]||{label:'',color:'#9a9a86'};
+    const tile=document.createElement('div');
+    tile.className='packSpinTile';
+    tile.style.borderColor=
+      i===LANDING_INDEX?info.color:'#1a201a';
+    const swatch=document.createElement('div');
+    swatch.className='swatch';
+    swatch.style.background=
+      '#'+tileSkin.base.toString(16).padStart(6,'0');
+    const label=document.createElement('div');
+    label.className='label';
+    label.style.color=info.color;
+    label.textContent=tileSkin.name;
+    tile.appendChild(swatch);
+    tile.appendChild(label);
+    frag.appendChild(tile);
+  }
+  track.appendChild(frag);
+  const viewportW=viewport.clientWidth||560;
+  const jitter=(Math.random()*36)-18;
+  const targetX=
+    -(LANDING_INDEX*TILE_W+TILE_W/2-viewportW/2)+jitter;
+  track.style.transition='none';
+  track.style.transform='translateX(0px)';
+  void track.offsetWidth;
+  const finish=()=>{
+    if(packSpin.resolved)
+      return;
+    packSpin.resolved=true;
+    track.removeEventListener('transitionend',finish);
+    finishPackSpin(pack,skin,alreadyOwned,refund);
+  };
+  track.addEventListener('transitionend',finish);
+  requestAnimationFrame(()=>{
+    track.style.transition=
+      'transform 4.2s cubic-bezier(.11,.7,.16,1)';
+    track.style.transform='translateX('+targetX+'px)';
+  });
+  skipBtn.onclick=()=>{
+    if(packSpin.resolved)
+      return;
+    track.style.transition='none';
+    track.style.transform='translateX('+targetX+'px)';
+    finish();
+  };
+  closeBtn.onclick=()=>{
+    overlay.style.display='none';
+    packSpin.active=false;
+  };
+}
+function finishPackSpin(pack,skin,alreadyOwned,refund){
+  const title=document.getElementById('packSpinTitle');
+  const resultEl=document.getElementById('packSpinResult');
+  const skipBtn=document.getElementById('packSpinSkipBtn');
+  const closeBtn=document.getElementById('packSpinCloseBtn');
   const info=
     SKIN_RARITY_INFO[skin.rarity]||
     {label:'',color:'#e6e6d8'};
-  panel.style.display='block';
-  panel.style.border='1px solid '+info.color;
-  panel.style.background=
-    'radial-gradient(circle, rgba(255,255,255,.06), rgba(0,0,0,.3))';
-  panel.innerHTML=
+  title.textContent=pack.name;
+  title.style.color=info.color;
+  resultEl.style.display='block';
+  resultEl.innerHTML=
     '<div style="font:700 11px system-ui,sans-serif;color:'+info.color+';letter-spacing:.1em;">'+
     info.label+'</div>'+
     '<div style="font:700 18px system-ui,sans-serif;color:#fff;margin:4px 0;">'+
@@ -8584,57 +8791,52 @@ function showAlphaPackReveal(skin,alreadyOwned,refund){
       :'NEW SKIN UNLOCKED'
     )+
     '</div>';
-  clearTimeout(showAlphaPackReveal._t);
-  showAlphaPackReveal._t=
-    setTimeout(()=>{panel.style.display='none';},2600);
+  skipBtn.style.display='none';
+  closeBtn.style.display='inline-block';
+  playUiClick();
 }
-function renderAlphaPackShop(){
-  const grid=document.getElementById('alphaPackGrid');
+function renderPacksShop(){
+  const grid=document.getElementById('packsGrid');
   if(!grid)
     return;
   grid.innerHTML='';
-  const ownedIceCount=
-    OPERATOR_SKINS
-      .filter(s=>s.packOnly)
-      .filter(s=>ownedSkins.includes(s.id))
-      .length;
-  const totalIce=
-    OPERATOR_SKINS.filter(s=>s.packOnly).length;
-  const card=document.createElement('div');
-  card.style.cssText=
-    'background:#0d1720;border:1px solid #1f3a4a;border-radius:8px;'+
-    'padding:14px;display:flex;flex-direction:column;gap:8px;'+
-    'min-width:220px;flex:1;';
-  const title=document.createElement('div');
-  title.style.cssText=
-    'font:700 14px system-ui,sans-serif;color:#8fe8ff;letter-spacing:.03em;';
-  title.textContent='ALPHA PACK';
-  const desc=document.createElement('div');
-  desc.style.cssText=
-    'font:12px system-ui,sans-serif;color:#8a9aa0;flex:1;';
-  desc.textContent=
-    'One random ICE weapon skin. Owned: '+
-    ownedIceCount+'/'+totalIce+'.';
-  const btn=document.createElement('button');
-  const afford=tokens>=ALPHA_PACK_COST;
-  btn.style.cssText=
-    'font:700 12px system-ui,sans-serif;border-radius:5px;'+
-    'padding:8px;cursor:'+(afford?'pointer':'not-allowed')+';'+
-    'border:1px solid transparent;background:'+
-    (afford?'#1f3a4a':'#141a1e')+';color:'+
-    (afford?'#8fe8ff':'#4a5a60')+';';
-  btn.textContent=
-    (afford?'OPEN PACK — ':'NEED ')+ALPHA_PACK_COST+' TOKENS';
-  btn.disabled=!afford;
-  if(afford)
-    btn.onclick=buyAlphaPack;
-  card.appendChild(title);
-  card.appendChild(desc);
-  card.appendChild(btn);
-  grid.appendChild(card);
+  ALPHA_PACKS.forEach(pack=>{
+    const ownedCount=
+      pack.pool.filter(e=>ownedSkins.includes(e.id)).length;
+    const totalCount=pack.pool.length;
+    const card=document.createElement('div');
+    card.className='packCard';
+    card.style.border='1px solid '+pack.accent+'55';
+    const title=document.createElement('div');
+    title.className='packName';
+    title.style.color=pack.accent;
+    title.textContent=pack.name;
+    const desc=document.createElement('div');
+    desc.className='packTagline';
+    desc.textContent=pack.tagline;
+    const owned=document.createElement('div');
+    owned.className='packOwned';
+    owned.textContent='Owned from this pack: '+ownedCount+'/'+totalCount;
+    const btn=document.createElement('button');
+    const afford=tokens>=pack.cost;
+    btn.style.cursor=afford?'pointer':'not-allowed';
+    btn.style.background=afford?pack.accent+'22':'#141a1e';
+    btn.style.color=afford?pack.accent:'#4a5a60';
+    btn.style.borderColor=afford?pack.accent+'88':'transparent';
+    btn.textContent=
+      (afford?'OPEN PACK — ':'NEED ')+pack.cost+' TOKENS';
+    btn.disabled=!afford||packSpin.active;
+    if(afford&&!packSpin.active)
+      btn.onclick=()=>buyPack(pack.id);
+    card.appendChild(title);
+    card.appendChild(desc);
+    card.appendChild(owned);
+    card.appendChild(btn);
+    grid.appendChild(card);
+  });
 }
 function renderShop(){
-  renderAlphaPackShop();
+  renderPacksShop();
   const grid=document.getElementById('shopGrid');
   if(!grid)
     return;
@@ -9151,64 +9353,132 @@ function buildMapMenu(){
   see makeBot()) so the two systems don't fight each other.
 */
 const OPERATOR_SKINS=[
-  {id:'tactical',name:'TACTICAL',base:0x151719,panel:0x242628,trim:0x111313,metalness:.82,roughness:.3},
-  {id:'desert',name:'DESERT',base:0x9c8a63,panel:0x7d6d4c,trim:0x5f5238,metalness:.4,roughness:.55},
-  {id:'arctic',name:'ARCTIC',base:0xd8dde0,panel:0xb7bec2,trim:0x8a9094,metalness:.3,roughness:.4},
-  {id:'woodland',name:'WOODLAND',base:0x4a5a3a,panel:0x3a4630,trim:0x2a3322,metalness:.35,roughness:.6},
-  {id:'crimson',name:'CRIMSON',base:0x6e1f1f,panel:0x4a1414,trim:0x2a0c0c,metalness:.6,roughness:.28},
+  /*
+    Every skin below is now pack-exclusive — none are owned by
+    default. The eight ORIGINAL finishes (tactical..inferno) live
+    in the ALPHA PACK pool as its "standard" tier alongside the
+    ICE cosmetics; BRAVO and VANTAGE are two further, independent
+    packs with their own four-tier pools. `pack` says which
+    pack's odds/coloring a skin belongs to; `rarity`/`packOnly`
+    drive ownership defaults and the shop's rarity labels.
+  */
   {
-    id:'gold',name:'GOLD RUSH',base:0xc9a227,panel:0xa3831c,trim:0x6b5510,
+    id:'tactical',name:'TACTICAL',rarity:'standard',packOnly:true,pack:'alpha',
+    base:0x151719,panel:0x242628,trim:0x111313,metalness:.82,roughness:.3
+  },
+  {
+    id:'desert',name:'DESERT',rarity:'standard',packOnly:true,pack:'alpha',
+    base:0x9c8a63,panel:0x7d6d4c,trim:0x5f5238,metalness:.4,roughness:.55
+  },
+  {
+    id:'arctic',name:'ARCTIC',rarity:'standard',packOnly:true,pack:'alpha',
+    base:0xd8dde0,panel:0xb7bec2,trim:0x8a9094,metalness:.3,roughness:.4
+  },
+  {
+    id:'woodland',name:'WOODLAND',rarity:'standard',packOnly:true,pack:'alpha',
+    base:0x4a5a3a,panel:0x3a4630,trim:0x2a3322,metalness:.35,roughness:.6
+  },
+  {
+    id:'crimson',name:'CRIMSON',rarity:'standard',packOnly:true,pack:'alpha',
+    base:0x6e1f1f,panel:0x4a1414,trim:0x2a0c0c,metalness:.6,roughness:.28
+  },
+  {
+    id:'gold',name:'GOLD RUSH',rarity:'standard',packOnly:true,pack:'alpha',
+    base:0xc9a227,panel:0xa3831c,trim:0x6b5510,
     metalness:.92,roughness:.16,
     trimEmissive:0xffd54a,trimEmissiveIntensity:.55
   },
   {
-    id:'shadow',name:'SHADOW OPS',base:0x0a0a0d,panel:0x141417,trim:0x2a8fff,
+    id:'shadow',name:'SHADOW OPS',rarity:'standard',packOnly:true,pack:'alpha',
+    base:0x0a0a0d,panel:0x141417,trim:0x2a8fff,
     metalness:.7,roughness:.32,
     trimEmissive:0x2a8fff,trimEmissiveIntensity:.85
   },
   {
-    id:'inferno',name:'INFERNO',base:0x241010,panel:0x361714,trim:0xff5020,
+    id:'inferno',name:'INFERNO',rarity:'standard',packOnly:true,pack:'alpha',
+    base:0x241010,panel:0x361714,trim:0xff5020,
     metalness:.55,roughness:.35,
     trimEmissive:0xff4010,trimEmissiveIntensity:.9
   },
-  /*
-    ALPHA PACK skins — rarity-tiered ICE cosmetics, only
-    obtainable by opening an Alpha Pack with tokens (see the
-    ALPHA PACKS section of the shop below), never freely
-    selectable like the eight above. `rarity`/`packOnly` drive
-    the ownership defaults and the shop's rarity odds/coloring.
-  */
+  /* ALPHA PACK's ICE tier — the bonus rare pulls above "standard" */
   {
-    id:'green_ice',name:'GREEN ICE',rarity:'common',packOnly:true,
+    id:'green_ice',name:'GREEN ICE',rarity:'common',packOnly:true,pack:'alpha',
     base:0xdcf5ea,panel:0xb8e8d2,trim:0x1fff8a,
     metalness:.65,roughness:.12,
     trimEmissive:0x2effa0,trimEmissiveIntensity:.75
   },
   {
-    id:'pink_ice',name:'PINK ICE',rarity:'uncommon',packOnly:true,
+    id:'pink_ice',name:'PINK ICE',rarity:'uncommon',packOnly:true,pack:'alpha',
     base:0xf7ecf5,panel:0xecd0e8,trim:0xff5ad0,
     metalness:.68,roughness:.11,
     trimEmissive:0xff6ae0,trimEmissiveIntensity:.8
   },
   {
-    id:'red_ice',name:'RED ICE',rarity:'rare',packOnly:true,
+    id:'red_ice',name:'RED ICE',rarity:'rare',packOnly:true,pack:'alpha',
     base:0xf7e4e4,panel:0xe8b8b8,trim:0xff2a2a,
     metalness:.7,roughness:.1,
     trimEmissive:0xff3030,trimEmissiveIntensity:.85
   },
   {
-    id:'black_ice',name:'BLACK ICE',rarity:'legendary',packOnly:true,
+    id:'black_ice',name:'BLACK ICE',rarity:'legendary',packOnly:true,pack:'alpha',
     base:0x0a0d10,panel:0x141a1e,trim:0x8fe8ff,
     metalness:.88,roughness:.06,
     trimEmissive:0xaef0ff,trimEmissiveIntensity:1
+  },
+  /* BRAVO PACK — CIRCUIT line */
+  {
+    id:'circuit_bronze',name:'CIRCUIT BRONZE',rarity:'common',packOnly:true,pack:'bravo',
+    base:0x3a2a18,panel:0x2a1e10,trim:0xc97a3a,metalness:.5,roughness:.35
+  },
+  {
+    id:'circuit_silver',name:'CIRCUIT SILVER',rarity:'uncommon',packOnly:true,pack:'bravo',
+    base:0x8a9296,panel:0x6a7276,trim:0x3ad9ff,
+    metalness:.7,roughness:.22,
+    trimEmissive:0x3ad9ff,trimEmissiveIntensity:.7
+  },
+  {
+    id:'circuit_gold',name:'CIRCUIT GOLD',rarity:'rare',packOnly:true,pack:'bravo',
+    base:0x2a2410,panel:0x1c1808,trim:0xffcf40,
+    metalness:.85,roughness:.14,
+    trimEmissive:0xffd54a,trimEmissiveIntensity:.85
+  },
+  {
+    id:'circuit_prism',name:'PRISM CIRCUIT',rarity:'legendary',packOnly:true,pack:'bravo',
+    base:0x14121c,panel:0x201c2c,trim:0xff5aff,
+    metalness:.9,roughness:.05,
+    trimEmissive:0xb85aff,trimEmissiveIntensity:1
+  },
+  /* VANTAGE PACK — CHROME line */
+  {
+    id:'chrome_slate',name:'CHROME SLATE',rarity:'common',packOnly:true,pack:'vantage',
+    base:0x3a3f42,panel:0x2c3134,trim:0x8fa0a6,metalness:.75,roughness:.2
+  },
+  {
+    id:'chrome_azure',name:'CHROME AZURE',rarity:'uncommon',packOnly:true,pack:'vantage',
+    base:0xdfe8ec,panel:0xb8ccd4,trim:0x2ab0ff,
+    metalness:.85,roughness:.12,
+    trimEmissive:0x2ab0ff,trimEmissiveIntensity:.75
+  },
+  {
+    id:'chrome_crimson',name:'CHROME CRIMSON',rarity:'rare',packOnly:true,pack:'vantage',
+    base:0x2a1014,panel:0x1c0a0e,trim:0xff2050,
+    metalness:.9,roughness:.08,
+    trimEmissive:0xff2050,trimEmissiveIntensity:.9
+  },
+  {
+    id:'chrome_prestige',name:'PRESTIGE CHROME',rarity:'legendary',packOnly:true,pack:'vantage',
+    base:0xf5f0e0,panel:0xe0d8c0,trim:0xffd700,
+    metalness:.95,roughness:.04,
+    trimEmissive:0xfff2b0,trimEmissiveIntensity:1
   }
 ];
 /*
   RARITY DISPLAY — shared by the skin picker's locked chips and
-  the Alpha Pack shop/reveal UI, so a rarity is always labeled
-  and colored consistently everywhere it shows up.
+  the loot pack shop/spin UI, so a rarity is always labeled and
+  colored consistently everywhere it shows up.
 */
 const SKIN_RARITY_INFO={
+  standard:{label:'STANDARD',color:'#c9c9b0'},
   common:{label:'COMMON',color:'#8fe0a8'},
   uncommon:{label:'UNCOMMON',color:'#ff9ae6'},
   rare:{label:'RARE',color:'#ff6a6a'},
@@ -9216,15 +9486,17 @@ const SKIN_RARITY_INFO={
 };
 let selectedSkinIndex=0;
 /* =========================================================
-   SKIN UNLOCKS — the eight curated skins above are owned by
-   default (grandfathered in for everyone); the four Alpha Pack
-   ice skins start locked and can only be earned by opening a
-   pack in the shop (see ALPHA PACKS below).
+   SKIN UNLOCKS — no skin is free any more, including the eight
+   original finishes: every one of them lives inside a loot
+   pack's pool now (see the LOOT PACKS section of the shop) and
+   has to be pulled and owned before it can be equipped. The key
+   is bumped to v2 so anyone who previously had the old free
+   skins starts fully locked out like everyone else.
 ========================================================= */
-const SKINS_OWNED_KEY='bp_skins_owned_v1';
+const SKINS_OWNED_KEY='bp_skins_owned_v2';
 let ownedSkins=[];
 function defaultOwnedSkins(){
-  return OPERATOR_SKINS.filter(s=>!s.packOnly).map(s=>s.id);
+  return [];
 }
 function loadSkins(){
   try{
