@@ -534,6 +534,19 @@ canvas{
   align-items:center;
   justify-content:space-between;
 }
+#utilityHud{
+  position:fixed;
+  bottom:160px;
+  right:24px;
+  z-index:5;
+  font-size:11px;
+  letter-spacing:.5px;
+  line-height:1.6;
+  color:#000;
+  background:rgba(232,230,216,.9);
+  padding:6px 14px;
+  border:1px solid #3a3f2a;
+}
 #intelHud{
   position:fixed;
   top:16px;
@@ -1200,7 +1213,7 @@ canvas{
       <input id="joinCodeInput" maxlength="5" placeholder="ROOM CODE" style="text-transform:uppercase;letter-spacing:4px;text-align:center;font:700 16px 'Courier New',monospace;padding:10px;width:140px;background:#0a0d0a;color:#c9d94a;border:1px solid #3a4a38;border-radius:3px;">
       <button id="joinConnectBtn" style="margin-left:10px;padding:10px 20px;background:#c9d94a;color:#0c0f0a;border:none;font-family:inherit;font-weight:bold;letter-spacing:1px;font-size:12px;cursor:pointer;border-radius:3px;">CONNECT</button>
     </div>
-    <p style="color:#6a7a80;font-size:10px;margin-top:16px;">No operator abilities, grenades or wall-breaching in duel mode v1 — straight gunfights only.</p>
+    <p style="color:#6a7a80;font-size:10px;margin-top:16px;">No operator abilities, grenades, wall-breaching, secondary weapon swap or utility gadgets in duel mode v1 — straight primary-weapon gunfights only.</p>
     <button id="onlineBackBtn" style="margin-top:10px;background:none;border:1px solid #3a4a38;color:#9aa89a;border-radius:4px;padding:7px 18px;cursor:pointer;font:600 12px system-ui,sans-serif;">BACK</button>
   </div>
 </div>
@@ -1377,7 +1390,7 @@ canvas{
 </div>
 <div id="finisherFlash" style="position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .12s linear;z-index:400;"></div>
 <div id="ammoHud">
-  AMMO <span id="ammoVal">30</span>/30
+  AMMO <span id="ammoVal">30</span>/<span id="maxAmmoVal">30</span>
   <span id="weaponVal">AR-15 CARBINE</span>
 </div>
 <div id="stanceHud">
@@ -1389,6 +1402,11 @@ canvas{
     <span id="abilityVal">READY</span>
     <div class="bar"><i id="abilityBar" style="background:#7fd8ff;width:120px;"></i></div>
   </div>
+</div>
+<div id="utilityHud">
+  <div>[V] SWAP: <span id="secondaryWeaponVal">M9 SIDEARM</span></div>
+  <div>[4] <span id="utilAName">FRAG GRENADE</span> &times;<span id="utilACount">2</span></div>
+  <div>[5] <span id="utilBName">CLAYMORE</span> &times;<span id="utilBCount">1</span></div>
 </div>
 <div id="intelHud"></div>
 <div id="cameraHud"></div>
@@ -3445,6 +3463,11 @@ function updateCameraAspects(){
       window.innerWidth/window.innerHeight;
     killCamCam.updateProjectionMatrix();
   }
+  if(deployedCamCamera){
+    deployedCamCamera.aspect=
+      window.innerWidth/window.innerHeight;
+    deployedCamCamera.updateProjectionMatrix();
+  }
 }
 /* =========================================================
    ENEMY OPERATOR MODEL
@@ -3942,6 +3965,26 @@ const player={
   spread:0,
   range:60,
   noise:1,
+  /*
+    SECONDARY WEAPONS + UTILITY — slot is 'primary' or
+    'secondary' ([V] toggles); primaryAmmo/secondaryAmmo stash
+    each slot's mag while the OTHER one is active (see
+    switchWeaponSlot()). weaponName/weaponSight/weaponRecoil
+    mirror the same "cache the active weapon's stats on the
+    player" pattern already used for weaponDmg/fireCdBase/etc,
+    so the whole fire/reload/HUD pipeline stays slot-agnostic.
+    util holds this round's remaining charges for all four
+    gadgets; only the two matching the player's current side
+    are ever consumable (see useUtilityGrenade()/useClaymore()/
+    useBarbedWire()/useDeployableCamera()).
+  */
+  slot:'primary',
+  primaryAmmo:30,
+  secondaryAmmo:12,
+  weaponName:'AR-15 CARBINE',
+  weaponSight:'reflex',
+  weaponRecoil:{pitch:.026,yaw:.009},
+  util:{grenade:0,claymore:0,wire:0,camera:0},
   stance:'standing',
   abilityCd:0,
   cloakTimer:0,
@@ -3995,7 +4038,7 @@ const BASE_FOV=75;
 document.addEventListener(
   'mousemove',
   e=>{
-    if(!locked||viewingCamIndex>=0)
+    if(!locked||viewingCamIndex>=0||deployedCamActive)
       return;
     const sens=
       .0022*(camera.fov/BASE_FOV);
@@ -4094,9 +4137,12 @@ const gameplayKeys=new Set([
   'f',
   'g',
   'r',
+  'v',
   '1',
   '2',
-  '3'
+  '3',
+  '4',
+  '5'
 ]);
 const keys={};
 window.addEventListener(
@@ -4139,6 +4185,21 @@ window.addEventListener(
       else if(key==='c'){
         stanceOverride=
           stanceOverride==='crouch'?null:'crouch';
+      }
+      else if(key==='v'){
+        switchWeaponSlot();
+      }
+      else if(key==='4'){
+        if(player.team==='attack')
+          useUtilityGrenade();
+        else
+          useBarbedWire();
+      }
+      else if(key==='5'){
+        if(player.team==='attack')
+          useClaymore();
+        else
+          useDeployableCamera();
       }
     }
     if(
@@ -4204,6 +4265,45 @@ let grenades=[];
 let currentOperator=null;
 let viewingCamIndex=-1;
 let hasShownSpectateMsg=false;
+/*
+  UTILITY GADGETS — claymores (attack) and barbed wire
+  (defense) are simple arrays of live field objects, ticked in
+  update() (see updateClaymores()/updateBarbedWires()) and wiped
+  by clearFieldGadgets() between rounds/matches. The deployable
+  camera (defense) is a single prop + its own THREE camera,
+  reusing the exact same "swap which camera the renderer uses"
+  mechanism already built for the three fixed wall cameras
+  (see viewingCamIndex/mapCameras above) rather than a second
+  parallel system.
+*/
+let claymores=[];
+let barbedWires=[];
+let deployedCamGroup=null;
+let deployedCamCamera=null;
+let deployedCamActive=false;
+const UTIL_CHARGES={grenade:2,claymore:1,wire:2,camera:1};
+function resetUtilityCharges(){
+  player.util={
+    grenade:UTIL_CHARGES.grenade,
+    claymore:UTIL_CHARGES.claymore,
+    wire:UTIL_CHARGES.wire,
+    camera:UTIL_CHARGES.camera
+  };
+}
+function clearFieldGadgets(){
+  claymores.forEach(c=>scene.remove(c.mesh));
+  claymores=[];
+  barbedWires.forEach(w=>scene.remove(w.mesh));
+  barbedWires=[];
+  clearDeployedCamera();
+}
+function clearDeployedCamera(){
+  if(deployedCamGroup)
+    scene.remove(deployedCamGroup);
+  deployedCamGroup=null;
+  deployedCamCamera=null;
+  deployedCamActive=false;
+}
 function showMsg(text,ms=2000){
   const el=
     document.getElementById('msg');
@@ -4254,13 +4354,15 @@ function updateHud(){
         ? '...'
         : player.ammo
       );
+  document.getElementById('maxAmmoVal').textContent=
+    player.infiniteAmmo?'∞':player.maxAmmo;
   document.getElementById('stanceVal').textContent=
     player.stance.toUpperCase();
   if(currentOperator){
     document.getElementById('operatorVal').textContent=
       currentOperator.name;
     document.getElementById('weaponVal').textContent=
-      currentOperator.weapon.name;
+      player.weaponName;
     document.getElementById('abilityName').textContent=
       currentOperator.ability.name;
     const pct=
@@ -4277,6 +4379,31 @@ function updateHud(){
       player.abilityCd>0
       ? Math.ceil(player.abilityCd)+'s'
       : 'READY';
+    /*
+      UTILITY HUD — shows what [V] swaps to (the OTHER slot's
+      weapon, not the active one — the active one is already
+      named right above in #weaponVal) and the two gadgets for
+      whichever side the player is currently on, with their
+      remaining per-round charges.
+    */
+    const otherWeaponName=
+      player.slot==='primary'
+      ? SECONDARY_WEAPONS[currentOperator.secondary].name
+      : currentOperator.weapon.name;
+    document.getElementById('secondaryWeaponVal').textContent=
+      otherWeaponName;
+    const utilA=
+      player.team==='attack'
+      ? {name:'FRAG GRENADE',count:player.util.grenade}
+      : {name:'BARBED WIRE',count:player.util.wire};
+    const utilB=
+      player.team==='attack'
+      ? {name:'CLAYMORE',count:player.util.claymore}
+      : {name:'DEPLOY CAM',count:player.util.camera};
+    document.getElementById('utilAName').textContent=utilA.name;
+    document.getElementById('utilACount').textContent=utilA.count;
+    document.getElementById('utilBName').textContent=utilB.name;
+    document.getElementById('utilBCount').textContent=utilB.count;
   }
   updateBossHud();
   if(duelMode)
@@ -4863,6 +4990,14 @@ function weaponSoundType(op){
     case 'wraith':return 'smg';
     case 'titan':return 'heavy';
     case 'juggernaut':return 'heavy';
+    /*
+      Synthetic ids passed in for secondary-weapon fire (see the
+      playGunfire() call in playerShoot()) rather than a real
+      operator, so the two sidearms get their own sound category
+      regardless of which operator is currently equipped.
+    */
+    case 'secondary_pistol':return 'smg';
+    case 'secondary_shorty':return 'shotgun';
     default:return 'rifle';
   }
 }
@@ -5337,7 +5472,12 @@ function playerShoot(){
     ? player.fireCdBase*.55
     : player.fireCdBase;
   player.ammo--;
-  playGunfire(currentOperator,0);
+  playGunfire(
+    player.slot==='secondary'&&currentOperator
+    ?{id:'secondary_'+currentOperator.secondary}
+    :currentOperator,
+    0
+  );
   /*
     RECOIL KICK — each trigger pull adds an instant
     impulse; the decay happens once per frame in update().
@@ -5345,7 +5485,7 @@ function playerShoot(){
     kick noticeably; crouching/crawling braces it further.
   */
   const recoilDef=
-    (currentOperator&&currentOperator.weapon.recoil)||
+    player.weaponRecoil||
     {pitch:.02,yaw:.008};
   let recoilMul=
     1-player.aimT*.45;
@@ -5811,6 +5951,37 @@ function runBotAI(bot,opponents,dt){
   bot.x=selfPos.x;
   bot.z=selfPos.z;
   bot.group.position.set(bot.x,getGroundHeightAt(bot.x,bot.z),bot.z);
+  /*
+    BARBED WIRE — a defender's deployed wire slows and slowly
+    damages any bot on the opposing team standing inside it
+    (see useBarbedWire()/updateBarbedWires(), which applies the
+    same tick to the human player's own view of enemies; this is
+    the bot-movement half of the same effect). wireSlowMul scales
+    every moveWithCollision() distance below rather than
+    permanently touching bot.speed, so the bot returns to full
+    speed the instant it steps back out of the zone.
+  */
+  let wireSlowMul=1;
+  if(bot.team!==player.team){
+    for(const w of barbedWires){
+      if(Math.hypot(bot.x-w.x,bot.z-w.z)<w.r){
+        wireSlowMul=.4;
+        bot.hp-=8*dt;
+        if(bot.hp<=0&&!bot.dead){
+          bot.dead=true;
+          scene.remove(bot.group);
+          score+=100;
+          addTokens(10);
+          triggerFinisher(
+            new THREE.Vector3(bot.x,1.2,bot.z)
+          );
+          checkEliminationWin();
+          return;
+        }
+        break;
+      }
+    }
+  }
   const found=
     findNearestVisibleTarget(
       bot,opponents
@@ -5919,8 +6090,8 @@ function runBotAI(bot,opponents,dt){
         steerAngle(bot,bot.escapeHeading);
       moveWithCollision(
         npos,
-        Math.sin(steer)*bot.speed*dt,
-        Math.cos(steer)*bot.speed*dt,
+        Math.sin(steer)*bot.speed*wireSlowMul*dt,
+        Math.cos(steer)*bot.speed*wireSlowMul*dt,
         bot.r
       );
     }
@@ -5929,8 +6100,8 @@ function runBotAI(bot,opponents,dt){
         steerAngle(bot,angTo);
       moveWithCollision(
         npos,
-        Math.sin(steer)*bot.speed*dt,
-        Math.cos(steer)*bot.speed*dt,
+        Math.sin(steer)*bot.speed*wireSlowMul*dt,
+        Math.cos(steer)*bot.speed*wireSlowMul*dt,
         bot.r
       );
     }
@@ -5939,8 +6110,8 @@ function runBotAI(bot,opponents,dt){
         steerAngle(bot,angTo+Math.PI);
       moveWithCollision(
         npos,
-        Math.sin(steer)*bot.speed*dt*.7,
-        Math.cos(steer)*bot.speed*dt*.7,
+        Math.sin(steer)*bot.speed*wireSlowMul*dt*.7,
+        Math.cos(steer)*bot.speed*wireSlowMul*dt*.7,
         bot.r
       );
     }
@@ -6623,6 +6794,353 @@ function explodeGrenade(pos){
     pos,0xff9040,6,.35
   );
 }
+/* =========================================================
+   SECONDARY WEAPON SWITCHING — [V] toggles player.slot and
+   swaps which mag is "live" in player.ammo. Every combat stat
+   fireWeaponRay()/playerShoot()/reload/HUD read (weaponDmg,
+   fireCdBase, pellets, spread, range, reloadTime, aimFov,
+   maxAmmo, plus weaponName/weaponSight/weaponRecoil for the
+   handful of spots that used to read currentOperator.weapon.*
+   directly) is refreshed here, so nothing downstream needs to
+   know or care which slot is active.
+========================================================= */
+function activeWeaponDef(){
+  if(!currentOperator)
+    return null;
+  return player.slot==='secondary'
+    ? SECONDARY_WEAPONS[currentOperator.secondary]
+    : currentOperator.weapon;
+}
+function applyActiveWeaponStats(){
+  const w=activeWeaponDef();
+  if(!w)
+    return;
+  player.maxAmmo=w.mag;
+  player.weaponDmg=w.dmg;
+  player.fireCdBase=w.fireCd;
+  player.pellets=w.pellets;
+  player.spread=w.spread;
+  player.range=w.range;
+  player.reloadTime=w.reload;
+  player.aimFov=w.aimFov;
+  player.weaponName=w.name;
+  player.weaponSight=w.sight;
+  player.weaponRecoil=w.recoil;
+  player.ammo=
+    player.slot==='secondary'
+    ?player.secondaryAmmo
+    :player.primaryAmmo;
+}
+function switchWeaponSlot(){
+  if(duelMode||player.cheatActive)
+    return;
+  if(!currentOperator||gameState!=='playing'||player.hp<=0)
+    return;
+  if(player.reloadCd>0)
+    player.reloadCd=0;
+  if(player.slot==='primary')
+    player.primaryAmmo=player.ammo;
+  else
+    player.secondaryAmmo=player.ammo;
+  player.slot=
+    player.slot==='primary'?'secondary':'primary';
+  applyActiveWeaponStats();
+  if(player.slot==='secondary')
+    applySecondaryWeaponVisual(currentOperator.secondary);
+  else
+    updateWeaponModel(currentOperator);
+  playUiClick();
+  showMsg(activeWeaponDef().name+' EQUIPPED',900);
+  updateHud();
+}
+/*
+  A lightweight visual swap rather than fully modeled pistol/
+  shorty geometry — reuses the same gunGroup/barrel scale-tweak
+  approach updateWeaponModel() already uses per-operator (see
+  its op.id branches above): pistols read as small and compact,
+  the super shorty as short and wide like a sawed-off double
+  barrel. Switching back to primary just re-runs
+  updateWeaponModel() to restore the operator's own silhouette.
+*/
+function applySecondaryWeaponVisual(secondaryId){
+  weaponExtras.forEach(m=>gunGroup.remove(m));
+  weaponExtras=[];
+  if(secondaryId==='shorty'){
+    gunGroup.scale.set(.62,.7,.34);
+    barrel.scale.set(1.4,1,.3);
+  }
+  else{
+    gunGroup.scale.set(.5,.55,.4);
+    barrel.scale.set(.55,.55,.35);
+  }
+}
+/* =========================================================
+   UTILITY GADGETS — two per side (see player.util/UTIL_CHARGES
+   above), bound to [4]/[5] and branched by player.team in the
+   keydown handler. Scope note: single-player only, same as
+   operator abilities/grenades/wall-breaching — bots never place
+   counter-gadgets, and none of this runs in online duel mode
+   (no networking for placed world objects yet).
+========================================================= */
+function utilityPlacementPoint(dist){
+  const dir=new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  dir.y=0;
+  if(dir.lengthSq()<1e-6)
+    dir.set(0,0,-1);
+  dir.normalize();
+  const x=player.x+dir.x*dist;
+  const z=player.z+dir.z*dist;
+  return {x,z,y:getGroundHeightAt(x,z),dir};
+}
+function useUtilityGrenade(){
+  if(duelMode||gameState!=='playing'||player.hp<=0)
+    return;
+  if(player.team!=='attack'){
+    showMsg('ATTACKERS ONLY',900);
+    return;
+  }
+  if(player.util.grenade<=0){
+    showMsg('NO FRAG GRENADES LEFT',900);
+    return;
+  }
+  player.util.grenade--;
+  throwFragCharge();
+  playAbilitySound();
+  showMsg('FRAG GRENADE THROWN ('+player.util.grenade+' LEFT)',1000);
+  updateHud();
+}
+function useClaymore(){
+  if(duelMode||gameState!=='playing'||player.hp<=0)
+    return;
+  if(player.team!=='attack'){
+    showMsg('ATTACKERS ONLY',900);
+    return;
+  }
+  if(player.util.claymore<=0){
+    showMsg('NO CLAYMORES LEFT',900);
+    return;
+  }
+  player.util.claymore--;
+  const p=utilityPlacementPoint(2.4);
+  const group=new THREE.Group();
+  const base=
+    new THREE.Mesh(
+      new THREE.BoxGeometry(.4,.26,.08),
+      new THREE.MeshStandardMaterial({
+        color:0x2a2f22,metalness:.5,roughness:.5
+      })
+    );
+  base.position.y=.13;
+  group.add(base);
+  const eye=
+    new THREE.Mesh(
+      new THREE.SphereGeometry(.03,6,6),
+      new THREE.MeshStandardMaterial({
+        color:0xff2a2a,
+        emissive:0xff2a2a,
+        emissiveIntensity:1
+      })
+    );
+  eye.position.set(0,.2,.05);
+  group.add(eye);
+  group.position.set(p.x,p.y,p.z);
+  group.lookAt(p.x+p.dir.x,p.y,p.z+p.dir.z);
+  scene.add(group);
+  claymores.push({
+    mesh:group,x:p.x,z:p.z,armTime:.8,dead:false
+  });
+  playAbilitySound();
+  showMsg('CLAYMORE PLACED ('+player.util.claymore+' LEFT)',1200);
+  updateHud();
+}
+function explodeClaymore(x,z){
+  /*
+    A claymore is meant to read as an outright kill at close
+    range, not just "a strong grenade" — 220 base damage clears
+    even a difficulty-boosted enemy's HP pool (op.maxHp*up to
+    ~1.3-1.7x, see makeBot()) at anything under roughly half the
+    trigger radius, tapering off to a graze near the edge.
+  */
+  const R=3.2;
+  enemies.forEach(en=>{
+    if(en.dead)
+      return;
+    const d=Math.hypot(en.x-x,en.z-z);
+    if(d<R){
+      const dmg=220*(1-d/R);
+      en.hp-=dmg;
+      en.fireCd=Math.max(en.fireCd,1.2);
+      en.alert=true;
+      if(en.hp<=0&&!en.dead){
+        en.dead=true;
+        scene.remove(en.group);
+        score+=100;
+        addTokens(10);
+        triggerFinisher(
+          new THREE.Vector3(en.x,1.2,en.z)
+        );
+        checkEliminationWin();
+      }
+    }
+  });
+  const pd=Math.hypot(player.x-x,player.z-z);
+  if(pd<2.2){
+    player.hp-=Math.round(30*(1-pd/2.2));
+  }
+  const pos=new THREE.Vector3(x,.8,z);
+  spawnGlowParticle(pos,0xff8020,4,.4);
+  spawnGlowParticle(pos,0xffe0a0,2,.22);
+  spawnFlashLight(pos,0xff9040,6,.3);
+}
+function updateClaymores(dt){
+  if(claymores.length===0)
+    return;
+  claymores.forEach(c=>{
+    if(c.dead)
+      return;
+    if(c.armTime>0){
+      c.armTime-=dt;
+      return;
+    }
+    let triggered=false;
+    enemies.forEach(en=>{
+      if(en.dead||triggered)
+        return;
+      if(Math.hypot(en.x-c.x,en.z-c.z)<1.6)
+        triggered=true;
+    });
+    if(triggered){
+      c.dead=true;
+      scene.remove(c.mesh);
+      explodeClaymore(c.x,c.z);
+    }
+  });
+  claymores=claymores.filter(c=>!c.dead);
+}
+function useBarbedWire(){
+  if(duelMode||gameState!=='playing'||player.hp<=0)
+    return;
+  if(player.team!=='defense'){
+    showMsg('DEFENDERS ONLY',900);
+    return;
+  }
+  if(player.util.wire<=0){
+    showMsg('NO BARBED WIRE LEFT',900);
+    return;
+  }
+  player.util.wire--;
+  const p=utilityPlacementPoint(2.2);
+  const group=new THREE.Group();
+  for(let i=0;i<3;i++){
+    const coil=
+      new THREE.Mesh(
+        new THREE.TorusGeometry(.32,.028,5,10),
+        new THREE.MeshStandardMaterial({
+          color:0x4a4a44,metalness:.6,roughness:.5
+        })
+      );
+    coil.rotation.x=Math.PI/2;
+    coil.position.set((i-1)*.28,.08,0);
+    group.add(coil);
+  }
+  group.position.set(p.x,p.y,p.z);
+  scene.add(group);
+  barbedWires.push({mesh:group,x:p.x,z:p.z,r:1.3});
+  playAbilitySound();
+  showMsg('BARBED WIRE DEPLOYED ('+player.util.wire+' LEFT)',1200);
+  updateHud();
+}
+function updateBarbedWires(dt){
+  if(barbedWires.length===0)
+    return;
+  enemies.forEach(en=>{
+    if(en.dead)
+      return;
+    en.wireSlowed=false;
+    for(const w of barbedWires){
+      if(Math.hypot(en.x-w.x,en.z-w.z)<w.r){
+        en.wireSlowed=true;
+        en.hp-=8*dt;
+        if(en.hp<=0&&!en.dead){
+          en.dead=true;
+          scene.remove(en.group);
+          score+=100;
+          addTokens(10);
+          triggerFinisher(
+            new THREE.Vector3(en.x,1.2,en.z)
+          );
+          checkEliminationWin();
+        }
+        break;
+      }
+    }
+  });
+}
+function useDeployableCamera(){
+  if(duelMode||gameState!=='playing'||player.hp<=0)
+    return;
+  if(player.team!=='defense'){
+    showMsg('DEFENDERS ONLY',900);
+    return;
+  }
+  if(deployedCamGroup){
+    deployedCamActive=!deployedCamActive;
+    viewingCamIndex=-1;
+    showMsg(
+      deployedCamActive
+      ?'VIEWING DEPLOYED CAMERA'
+      :'CAMERA VIEW EXITED',
+      1000
+    );
+    return;
+  }
+  if(player.util.camera<=0){
+    showMsg('NO CAMERA LEFT',900);
+    return;
+  }
+  player.util.camera--;
+  const p=utilityPlacementPoint(1.6);
+  const py=1.9+p.y;
+  const group=new THREE.Group();
+  const box=
+    new THREE.Mesh(
+      new THREE.BoxGeometry(.22,.22,.3),
+      new THREE.MeshStandardMaterial({
+        color:0x14161a,metalness:.7,roughness:.35
+      })
+    );
+  group.add(box);
+  const lens=
+    new THREE.Mesh(
+      new THREE.CylinderGeometry(.06,.06,.08,10),
+      new THREE.MeshStandardMaterial({
+        color:0x2a3a4a,
+        emissive:0x2a5a8a,
+        emissiveIntensity:.6,
+        metalness:.8,
+        roughness:.2
+      })
+    );
+  lens.rotation.x=Math.PI/2;
+  lens.position.z=.18;
+  group.add(lens);
+  group.position.set(p.x,py,p.z);
+  group.lookAt(p.x+p.dir.x*4,py,p.z+p.dir.z*4);
+  scene.add(group);
+  deployedCamGroup=group;
+  deployedCamCamera=
+    new THREE.PerspectiveCamera(
+      70,window.innerWidth/window.innerHeight,.1,500
+    );
+  deployedCamCamera.position.set(p.x,py,p.z);
+  deployedCamCamera.lookAt(
+    p.x+p.dir.x*4,py-.3,p.z+p.dir.z*4
+  );
+  playAbilitySound();
+  showMsg('CAMERA DEPLOYED — PRESS [5] AGAIN TO VIEW',1600);
+  updateHud();
+}
 function activateCloak(){
   player.cloakTimer=5;
 }
@@ -6859,8 +7377,26 @@ function resetRound(){
     .getElementById('detonate')
     .style.display='block';
   player.hp=player.maxHp;
-  player.ammo=player.maxAmmo;
   player.reloadCd=0;
+  /*
+    Every round starts back on the primary weapon with both
+    mags topped off and a fresh set of utility charges — same
+    "everything resets between rounds" treatment as HP/ammo
+    above. Leftover claymores/wire/a deployed camera from the
+    round that just ended are cleared here too, same spot the
+    existing tracers/holes/particles/grenades cleanup below
+    already runs.
+  */
+  player.slot='primary';
+  if(currentOperator){
+    player.primaryAmmo=currentOperator.weapon.mag;
+    player.secondaryAmmo=
+      SECONDARY_WEAPONS[currentOperator.secondary].mag;
+    applyActiveWeaponStats();
+    updateWeaponModel(currentOperator);
+  }
+  resetUtilityCharges();
+  clearFieldGadgets();
   /*
     SPAWN PROTECTION — a short damage-immunity window right
     after spawning/respawning so a bot (or the boss) that
@@ -6933,6 +7469,9 @@ function resetRound(){
     .style.display='block';
   document
     .getElementById('stanceHud')
+    .style.display='block';
+  document
+    .getElementById('utilityHud')
     .style.display='block';
   document
     .getElementById('spectateHud')
@@ -7082,7 +7621,9 @@ function update(){
   const activeCam=
     viewingCamIndex>=0
     ?mapCameras[viewingCamIndex]
-    :camera;
+    :(deployedCamActive&&deployedCamCamera
+      ?deployedCamCamera
+      :camera);
   if(
     !locked ||
     gameState==='gameover' ||
@@ -7235,7 +7776,7 @@ function update(){
   }
   updateScanOutlines();
   const inputActive=
-    viewingCamIndex<0;
+    viewingCamIndex<0 && !deployedCamActive;
   const camHudEl=
     document.getElementById('cameraHud');
   if(viewingCamIndex>=0){
@@ -7245,6 +7786,11 @@ function update(){
       ' — PRESS '+
       (viewingCamIndex+1)+
       ' AGAIN TO RETURN';
+    camHudEl.style.display='block';
+  }
+  else if(deployedCamActive){
+    camHudEl.textContent=
+      'VIEWING DEPLOYED CAMERA — PRESS 5 AGAIN TO RETURN';
     camHudEl.style.display='block';
   }
   else{
@@ -7298,7 +7844,7 @@ function update(){
     Math.max(0,1-player.aimT*1.15);
   const activeSight=
     currentOperator
-    ? currentOperator.weapon.sight
+    ? player.weaponSight
     : null;
   document.getElementById('scopeOverlay').style.opacity=
     activeSight==='scope'?player.aimT:0;
@@ -7667,6 +8213,11 @@ function update(){
   grenades=
     grenades.filter(g=>!g.dead);
   /* =====================================================
+     UTILITY GADGETS (CLAYMORES / BARBED WIRE)
+  ===================================================== */
+  updateClaymores(dt);
+  updateBarbedWires(dt);
+  /* =====================================================
      TEMPORARY WALLS (DEPLOYABLE SHIELD)
   ===================================================== */
   walls.forEach(w=>{
@@ -7778,6 +8329,7 @@ function update(){
     document.getElementById('ammoHud').style.display='none';
     document.getElementById('abilityHud').style.display='none';
     document.getElementById('stanceHud').style.display='none';
+    document.getElementById('utilityHud').style.display='none';
     document.getElementById('crosshair').style.display='none';
   }
   document.getElementById('spectateHud').style.display=
@@ -7843,6 +8395,44 @@ window.addEventListener(
   }
 );
 /* =========================================================
+   SECONDARY WEAPONS — every operator carries one of these two
+   sidearms alongside their primary (see the `secondary` field
+   on each PLAYER_OPS entry below), swapped to with [V]. Same
+   stat shape as a primary weapon so the whole fire/reload/HUD
+   pipeline (which reads player.weaponDmg/fireCdBase/pellets/
+   spread/range/reloadTime/aimFov, refreshed by
+   applyActiveWeaponStats() on every switch) works identically
+   for either slot without needing its own code path.
+========================================================= */
+const SECONDARY_WEAPONS={
+  pistol:{
+    name:'M9 SIDEARM',
+    dmg:24,
+    fireCd:.16,
+    mag:12,
+    reload:1.0,
+    pellets:1,
+    spread:.01,
+    range:35,
+    aimFov:62,
+    sight:'iron',
+    recoil:{pitch:.017,yaw:.008}
+  },
+  shorty:{
+    name:'SUPER SHORTY',
+    dmg:16,
+    fireCd:.6,
+    mag:2,
+    reload:1.6,
+    pellets:6,
+    spread:.11,
+    range:12,
+    aimFov:66,
+    sight:'iron',
+    recoil:{pitch:.05,yaw:.02}
+  }
+};
+/* =========================================================
    OPERATOR ROSTER
    Four distinct loadouts: an assault rifle rusher with
    grenades, a fast/quiet SMG infiltrator, a shotgun
@@ -7856,6 +8446,7 @@ const PLAYER_OPS=[
     name:'VANGUARD',
     role:'ASSAULT',
     accent:'#c9d94a',
+    secondary:'pistol',
     maxHp:100,
     speedMul:1,
     weapon:{
@@ -7882,6 +8473,7 @@ const PLAYER_OPS=[
     name:'PHANTOM',
     role:'INFILTRATOR',
     accent:'#7fd8ff',
+    secondary:'pistol',
     maxHp:85,
     speedMul:1.15,
     weapon:{
@@ -7908,6 +8500,7 @@ const PLAYER_OPS=[
     name:'SIEGE',
     role:'BREACHER',
     accent:'#ff9a4a',
+    secondary:'shorty',
     maxHp:115,
     speedMul:.95,
     weapon:{
@@ -7934,6 +8527,7 @@ const PLAYER_OPS=[
     name:'WARDEN',
     role:'MARKSMAN',
     accent:'#c98aff',
+    secondary:'pistol',
     maxHp:105,
     speedMul:.9,
     weapon:{
@@ -7960,6 +8554,7 @@ const PLAYER_OPS=[
     name:'EMBER',
     role:'FLANKER',
     accent:'#ff7a30',
+    secondary:'shorty',
     maxHp:100,
     speedMul:1.05,
     weapon:{
@@ -7986,6 +8581,7 @@ const PLAYER_OPS=[
     name:'VESPER',
     role:'SHADOW',
     accent:'#9a8aff',
+    secondary:'pistol',
     maxHp:90,
     speedMul:1.08,
     weapon:{
@@ -8019,6 +8615,7 @@ const PLAYER_OPS=[
     name:'WRAITH',
     role:'SCOUT',
     accent:'#5affc9',
+    secondary:'pistol',
     cost:300,
     maxHp:80,
     speedMul:1.2,
@@ -8046,6 +8643,7 @@ const PLAYER_OPS=[
     name:'TITAN',
     role:'HEAVY',
     accent:'#ff5a5a',
+    secondary:'shorty',
     cost:450,
     maxHp:130,
     speedMul:.85,
@@ -8149,14 +8747,21 @@ function applyOperatorLoadout(op){
   player.maxHp=op.maxHp;
   player.hp=op.maxHp;
   player.speed=5.2*op.speedMul;
-  player.maxAmmo=op.weapon.mag;
-  player.ammo=op.weapon.mag;
-  player.weaponDmg=op.weapon.dmg;
-  player.fireCdBase=op.weapon.fireCd;
-  player.pellets=op.weapon.pellets;
-  player.spread=op.weapon.spread;
-  player.range=op.weapon.range;
-  player.reloadTime=op.weapon.reload;
+  /*
+    Secondary weapon + utility loadout — see SECONDARY_WEAPONS/
+    applyActiveWeaponStats() above. Both mags start full and
+    slot resets to primary on every fresh deploy, same as a
+    round reset (see resetRound()); resetUtilityCharges() fills
+    all four gadget counters, though only the two matching
+    op's current side (player.team, set separately below) are
+    ever usable.
+  */
+  player.slot='primary';
+  player.primaryAmmo=op.weapon.mag;
+  player.secondaryAmmo=SECONDARY_WEAPONS[op.secondary].mag;
+  applyActiveWeaponStats();
+  resetUtilityCharges();
+  clearFieldGadgets();
   player.infiniteAmmo=false;
   player.cheatActive=false;
   player.abilityCd=0;
@@ -8171,7 +8776,6 @@ function applyOperatorLoadout(op){
   player.tilt=0;
   tiltState=0;
   stanceOverride=null;
-  player.aimFov=op.weapon.aimFov;
   aiming=false;
   camera.fov=BASE_FOV;
   camera.updateProjectionMatrix();
@@ -8216,6 +8820,15 @@ function activateSecretCheat(){
   player.maxAmmo=Infinity;
   player.ammo=Infinity;
   player.cheatActive=true;
+  /*
+    weaponName is what the HUD actually reads now (see
+    applyActiveWeaponStats()/updateHud()) rather than
+    currentOperator.weapon.name directly, so it needs its own
+    override here too or the ammo HUD would keep showing the
+    pre-cheat weapon name.
+  */
+  player.weaponName='PX-LASER EMITTER';
+  player.slot='primary';
   if(currentOperator){
     currentOperator=Object.assign(
       {},currentOperator,
@@ -9540,6 +10153,7 @@ function buildOperatorGridInto(containerId){
       (owned?'':' &#128274;')+'</h3>'+
       '<div class="role">'+op.role+'</div>'+
       '<div class="stat">WEAPON: '+op.weapon.name+'</div>'+
+      '<div class="stat">SECONDARY: '+SECONDARY_WEAPONS[op.secondary].name+'</div>'+
       '<div class="stat">HP: '+op.maxHp+' &middot; SPD: '+Math.round(op.speedMul*100)+'%</div>'+
       '<div class="stat">ABILITY [G]: '+op.ability.name+'</div>'+
       '<div class="abilityDesc">'+op.ability.desc+'</div>'+
@@ -10525,6 +11139,7 @@ function resetDuelRound(){
   document.getElementById('scopeOverlay').style.opacity=0;
   document.getElementById('ammoHud').style.display='block';
   document.getElementById('abilityHud').style.display='none';
+  document.getElementById('utilityHud').style.display='none';
   document.getElementById('stanceHud').style.display='block';
   document.getElementById('spectateHud').style.display='none';
   hasShownSpectateMsg=false;
