@@ -973,6 +973,75 @@ canvas{
   text-align:center;
   padding:0 3px;
 }
+.invTile{
+  background:#171d15;
+  border:1px solid #2a3524;
+  border-radius:7px;
+  padding:10px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+  text-align:center;
+}
+.invTile.equipped{
+  border-color:#c9d94a;
+  box-shadow:0 0 10px rgba(201,217,74,.3);
+}
+.invTile .swatch{
+  width:48px;
+  height:30px;
+  border:1px solid rgba(0,0,0,.5);
+}
+.invTile .name{
+  font-size:10px;
+  letter-spacing:.6px;
+  color:#c9c9b0;
+}
+.invTile .packTag{
+  font-size:8px;
+  letter-spacing:.4px;
+  color:#6a7a76;
+}
+.invTile button{
+  font:600 9.5px system-ui,sans-serif;
+  padding:4px 9px;
+  border-radius:4px;
+  border:1px solid #3a4a38;
+  background:#0d1310;
+  color:#9aa89a;
+  cursor:pointer;
+  margin-top:2px;
+}
+.invTile.equipped button{
+  background:#c9d94a;
+  color:#0c0f0a;
+  border-color:#c9d94a;
+  cursor:default;
+}
+.oddsRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:6px 8px;
+  background:#171d15;
+  border-radius:5px;
+  border-left:3px solid transparent;
+}
+.oddsRow .oddsName{
+  font:600 11px system-ui,sans-serif;
+  color:#c9c9b0;
+}
+.oddsRow .oddsRarity{
+  font-size:8.5px;
+  letter-spacing:.5px;
+}
+.oddsRow .oddsPct{
+  font:700 12px system-ui,sans-serif;
+  color:#e6e6d8;
+  white-space:nowrap;
+}
 #menuFooter{
   margin-top:24px;
   display:flex;
@@ -1095,6 +1164,28 @@ canvas{
     <button id="packSpinCloseBtn" style="display:none;font:700 12px system-ui,sans-serif;padding:8px 20px;border-radius:4px;border:none;background:#c9d94a;color:#0c0f0a;cursor:pointer;">CONTINUE</button>
   </div>
 </div>
+<div id="inventoryOverlay" style="display:none;position:fixed;inset:0;background:rgba(6,8,6,.86);z-index:150000;font-family:inherit;">
+  <div style="max-width:820px;margin:5vh auto;background:#11150f;border:1px solid #2a3524;border-radius:10px;padding:24px 28px 30px;max-height:88vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <h2 style="margin:0;color:#8fe8ff;letter-spacing:.05em;font-size:20px;">INVENTORY</h2>
+      <button id="inventoryCloseBtn" style="background:none;border:1px solid #3a4a38;color:#9aa89a;border-radius:4px;padding:5px 12px;cursor:pointer;font:600 12px system-ui,sans-serif;">CLOSE</button>
+    </div>
+    <p id="inventorySummary" style="color:#8a9a86;font-size:12px;margin:2px 0 18px;"></p>
+    <div id="inventoryGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;"></div>
+  </div>
+</div>
+<div id="packOddsOverlay" style="display:none;position:fixed;inset:0;background:rgba(4,6,8,.9);z-index:160000;font-family:inherit;">
+  <div style="max-width:420px;margin:10vh auto;background:#11150f;border:1px solid #2a3524;border-radius:10px;padding:22px 24px 26px;max-height:78vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+      <h2 id="packOddsTitle" style="margin:0;color:#c9d94a;letter-spacing:.05em;font-size:17px;">PULL RATES</h2>
+      <button id="packOddsCloseBtn" style="background:none;border:1px solid #3a4a38;color:#9aa89a;border-radius:4px;padding:5px 12px;cursor:pointer;font:600 12px system-ui,sans-serif;">CLOSE</button>
+    </div>
+    <p style="color:#8a9aa0;font-size:11px;margin:4px 0 14px;">
+      The exact odds used every time this pack is opened — nothing hidden.
+    </p>
+    <div id="packOddsList" style="display:flex;flex-direction:column;gap:6px;"></div>
+  </div>
+</div>
 <div id="onlineMenuOverlay" style="display:none;position:fixed;inset:0;background:rgba(6,8,10,.88);z-index:150000;font-family:inherit;">
   <div style="max-width:520px;margin:14vh auto;background:#0f1416;border:1px solid #24343a;border-radius:10px;padding:28px 30px 32px;text-align:center;">
     <h2 style="margin:0 0 6px;color:#7fd8ff;letter-spacing:.05em;font-size:20px;">1V1 ONLINE DUEL</h2>
@@ -1134,6 +1225,9 @@ canvas{
     </div>
     <button id="shopOpenBtn" style="font:600 12px system-ui,sans-serif;background:#1c2420;color:#c9d94a;border:1px solid #3a4a38;border-radius:4px;padding:5px 12px;cursor:pointer;letter-spacing:.04em;">
       &#128722; SHOP
+    </button>
+    <button id="inventoryOpenBtn" style="font:600 12px system-ui,sans-serif;background:#1c2420;color:#8fe8ff;border:1px solid #3a4a38;border-radius:4px;padding:5px 12px;cursor:pointer;letter-spacing:.04em;">
+      &#127959; INVENTORY
     </button>
   </div>
   <p class="menuSub">SELECT YOUR OPERATOR</p>
@@ -8828,13 +8922,167 @@ function renderPacksShop(){
     btn.disabled=!afford||packSpin.active;
     if(afford&&!packSpin.active)
       btn.onclick=()=>buyPack(pack.id);
+    const oddsBtn=document.createElement('button');
+    oddsBtn.style.cssText=
+      'font:600 10px system-ui,sans-serif;background:none;'+
+      'border:1px solid #2a3524;color:#8a9a86;padding:5px 8px;'+
+      'border-radius:4px;cursor:pointer;';
+    oddsBtn.textContent='VIEW PULL RATES';
+    oddsBtn.onclick=()=>showPackOdds(pack.id);
     card.appendChild(title);
     card.appendChild(desc);
     card.appendChild(owned);
     card.appendChild(btn);
+    card.appendChild(oddsBtn);
     grid.appendChild(card);
   });
 }
+/*
+  PULL RATES — shows the exact weight/total percentage rollPack()
+  actually uses for the given pack, sorted rarest-first. This is
+  the same math the roll itself runs; nothing is dramatized or
+  hidden here on purpose, so a player can always check the real
+  odds before spending tokens.
+*/
+const RARITY_ORDER=['legendary','rare','uncommon','common','standard'];
+function showPackOdds(packId){
+  const pack=ALPHA_PACKS.find(p=>p.id===packId);
+  if(!pack)
+    return;
+  const overlay=document.getElementById('packOddsOverlay');
+  const title=document.getElementById('packOddsTitle');
+  const list=document.getElementById('packOddsList');
+  title.textContent=pack.name+' — PULL RATES';
+  title.style.color=pack.accent;
+  const total=pack.pool.reduce((s,e)=>s+e.weight,0);
+  const rows=pack.pool
+    .map(e=>({
+      skin:OPERATOR_SKINS.find(s=>s.id===e.id),
+      pct:e.weight/total*100
+    }))
+    .sort((a,b)=>{
+      const ra=RARITY_ORDER.indexOf(a.skin.rarity);
+      const rb=RARITY_ORDER.indexOf(b.skin.rarity);
+      return ra!==rb?ra-rb:a.pct-b.pct;
+    });
+  list.innerHTML='';
+  rows.forEach(row=>{
+    const info=SKIN_RARITY_INFO[row.skin.rarity]||{label:'',color:'#9a9a86'};
+    const rowEl=document.createElement('div');
+    rowEl.className='oddsRow';
+    rowEl.style.borderLeftColor=info.color;
+    const left=document.createElement('div');
+    const name=document.createElement('div');
+    name.className='oddsName';
+    name.textContent=row.skin.name;
+    const rarity=document.createElement('div');
+    rarity.className='oddsRarity';
+    rarity.style.color=info.color;
+    rarity.textContent=info.label;
+    left.appendChild(name);
+    left.appendChild(rarity);
+    const pct=document.createElement('div');
+    pct.className='oddsPct';
+    pct.textContent=
+      (row.pct<.1?row.pct.toFixed(2):row.pct.toFixed(1))+'%';
+    rowEl.appendChild(left);
+    rowEl.appendChild(pct);
+    list.appendChild(rowEl);
+  });
+  overlay.style.display='block';
+  playUiClick();
+}
+function closePackOdds(){
+  document.getElementById('packOddsOverlay').style.display='none';
+  playUiClick();
+}
+/*
+  INVENTORY — a dedicated view of only the skins you actually
+  own (as opposed to the loadout's SELECT WEAPON SKIN grid, which
+  shows every skin, owned or not, so you know what's still out
+  there to pull). Opening a pack adds straight into this list;
+  nothing needs to be separately "claimed". Skins are grouped by
+  rarity, rarest first, and can be equipped directly from here.
+*/
+function buildInventoryGrid(){
+  const grid=document.getElementById('inventoryGrid');
+  const summary=document.getElementById('inventorySummary');
+  if(!grid)
+    return;
+  grid.innerHTML='';
+  const owned=OPERATOR_SKINS
+    .map((s,i)=>({skin:s,index:i}))
+    .filter(e=>isSkinOwned(e.skin))
+    .sort((a,b)=>{
+      const ra=RARITY_ORDER.indexOf(a.skin.rarity);
+      const rb=RARITY_ORDER.indexOf(b.skin.rarity);
+      return ra!==rb?ra-rb:a.skin.name.localeCompare(b.skin.name);
+    });
+  summary.textContent=
+    owned.length+'/'+OPERATOR_SKINS.length+
+    ' SKINS COLLECTED — pulled from ALPHA/BRAVO/VANTAGE packs.';
+  if(owned.length===0){
+    const empty=document.createElement('div');
+    empty.style.cssText=
+      'color:#6a7a76;font:12px system-ui,sans-serif;padding:20px 0;grid-column:1/-1;text-align:center;';
+    empty.textContent=
+      'No skins yet — open a loot pack in the SHOP to start your collection.';
+    grid.appendChild(empty);
+    return;
+  }
+  owned.forEach(({skin,index})=>{
+    const info=SKIN_RARITY_INFO[skin.rarity]||{label:'',color:'#9a9a86'};
+    const equipped=index===selectedSkinIndex;
+    const tile=document.createElement('div');
+    tile.className='invTile'+(equipped?' equipped':'');
+    tile.style.borderColor=equipped?'#c9d94a':info.color+'55';
+    const swatch=document.createElement('div');
+    swatch.className='swatch';
+    swatch.style.background=
+      '#'+skin.base.toString(16).padStart(6,'0');
+    const name=document.createElement('div');
+    name.className='name';
+    name.textContent=skin.name;
+    const rarity=document.createElement('div');
+    rarity.className='packTag';
+    rarity.style.color=info.color;
+    rarity.textContent=
+      info.label+(skin.pack?' · '+skin.pack.toUpperCase():'');
+    const btn=document.createElement('button');
+    btn.textContent=equipped?'EQUIPPED':'EQUIP';
+    if(!equipped){
+      btn.onclick=()=>{
+        selectedSkinIndex=index;
+        buildSkinMenu();
+        buildInventoryGrid();
+        playUiClick();
+      };
+    }
+    tile.appendChild(swatch);
+    tile.appendChild(name);
+    tile.appendChild(rarity);
+    tile.appendChild(btn);
+    grid.appendChild(tile);
+  });
+}
+function openInventory(){
+  buildInventoryGrid();
+  document.getElementById('inventoryOverlay').style.display='block';
+  playUiClick();
+}
+function closeInventory(){
+  document.getElementById('inventoryOverlay').style.display='none';
+  playUiClick();
+}
+document
+  .getElementById('inventoryOpenBtn')
+  .addEventListener('click',openInventory);
+document
+  .getElementById('inventoryCloseBtn')
+  .addEventListener('click',closeInventory);
+document
+  .getElementById('packOddsCloseBtn')
+  .addEventListener('click',closePackOdds);
 function renderShop(){
   renderPacksShop();
   const grid=document.getElementById('shopGrid');
