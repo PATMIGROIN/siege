@@ -1154,6 +1154,11 @@ canvas{
     <div style="color:#ffd54a;font:600 13px system-ui,sans-serif;margin-bottom:14px;">
       &#9733; BALANCE: <span id="shopTokenVal">0</span> TOKENS
     </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:18px;flex-wrap:wrap;">
+      <input id="partyCodeInput" maxlength="24" placeholder="PARTY CODE" style="text-transform:uppercase;letter-spacing:2px;font:700 12px 'Courier New',monospace;padding:8px 10px;width:150px;background:#0a0d0a;color:#c9d94a;border:1px solid #3a4a38;border-radius:4px;">
+      <button id="partyCodeBtn" style="font:700 11px system-ui,sans-serif;padding:9px 14px;border-radius:4px;border:1px solid #3a4a38;background:#1c2420;color:#c9d94a;cursor:pointer;letter-spacing:.04em;">REDEEM</button>
+      <span id="partyCodeMsg" style="font:600 11px system-ui,sans-serif;"></span>
+    </div>
     <div style="border:1px solid #1f2a1c;border-radius:9px;padding:14px 14px 16px;margin-bottom:22px;background:rgba(20,26,18,.4);">
       <h3 style="margin:0 0 6px;color:#8fe8ff;letter-spacing:.04em;font-size:15px;">&#10052; LOOT PACKS</h3>
       <p style="color:#8a9aa0;font-size:11px;margin:0 0 12px;">
@@ -9208,6 +9213,83 @@ function addTokens(n){
   updateTokenHud();
 }
 loadTokens();
+/* =========================================================
+   PARTY CODES — one-time redeemable codes entered in the shop
+   for a flat token grant. Matching is case-insensitive/trimmed
+   so "LeBron94", " lebron94 ", etc. all work. Each code can only
+   be redeemed once per browser (tracked separately from tokens
+   themselves, so it survives even a tokens-balance reset) —
+   without that, reloading and re-entering the same code would
+   be an infinite token exploit.
+========================================================= */
+const REDEEM_CODES={
+  lebron94:1000
+};
+const REDEEMED_CODES_KEY='bp_redeemed_codes_v1';
+let redeemedCodes=[];
+function loadRedeemedCodes(){
+  try{
+    const raw=localStorage.getItem(REDEEMED_CODES_KEY);
+    redeemedCodes=raw?JSON.parse(raw):[];
+    if(!Array.isArray(redeemedCodes))
+      redeemedCodes=[];
+  }
+  catch(e){
+    redeemedCodes=[];
+  }
+}
+function saveRedeemedCodes(){
+  try{
+    localStorage.setItem(
+      REDEEMED_CODES_KEY,
+      JSON.stringify(redeemedCodes)
+    );
+  }
+  catch(e){}
+}
+loadRedeemedCodes();
+function redeemPartyCode(){
+  const input=document.getElementById('partyCodeInput');
+  const msg=document.getElementById('partyCodeMsg');
+  if(!input||!msg)
+    return;
+  const raw=input.value.trim().toLowerCase();
+  if(!raw){
+    msg.style.color='#ff8a6a';
+    msg.textContent='ENTER A CODE';
+    return;
+  }
+  if(!(raw in REDEEM_CODES)){
+    msg.style.color='#ff8a6a';
+    msg.textContent='INVALID CODE';
+    playUiClick();
+    return;
+  }
+  if(redeemedCodes.includes(raw)){
+    msg.style.color='#ff8a6a';
+    msg.textContent='CODE ALREADY USED';
+    playUiClick();
+    return;
+  }
+  const amount=REDEEM_CODES[raw];
+  redeemedCodes.push(raw);
+  saveRedeemedCodes();
+  addTokens(amount);
+  msg.style.color='#8fe0a8';
+  msg.textContent='+'+amount+' TOKENS!';
+  input.value='';
+  playUiClick();
+  renderShop();
+}
+document
+  .getElementById('partyCodeBtn')
+  .addEventListener('click',redeemPartyCode);
+document
+  .getElementById('partyCodeInput')
+  .addEventListener('keydown',e=>{
+    if(e.key==='Enter')
+      redeemPartyCode();
+  });
 /* =========================================================
    FINISHERS — cosmetic kill-confirm flourishes bought in the
    shop with tokens. Only the equipped one (if any) fires,
