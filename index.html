@@ -6459,12 +6459,24 @@ function updateStance(){
    WALL COLLISION
 ========================================================= */
 function resolveWallCollisionXZ(
-  pos,r
+  pos,r,y
 ){
   for(
     const w of walls
   ){
     if(w.broken)
+      continue;
+    /*
+      OVER-THE-WALL — the optional `y` param lets an airborne
+      caller (currently only thrown grenades — see the GRENADES
+      update loop) clear a wall by throwing high enough to arc
+      above it, rather than treating every wall as an infinitely
+      tall plane. Every other caller (player/bot movement,
+      decoration-adjacent pushes, etc.) never passes a third
+      argument, so `y` stays undefined there and this check is
+      always false — their collision behavior is unchanged.
+    */
+    if(y!==undefined&&y>=w.h)
       continue;
     const hw=w.w/2;
     const hd=w.d/2;
@@ -8195,8 +8207,16 @@ function update(){
       x:g.pos.x,
       z:g.pos.z
     };
+    /*
+      Pass the grenade's current height as the collision's
+      optional third arg (see resolveWallCollisionXZ) — a throw
+      arced high enough clears a wall's top face instead of
+      always splatting against it like a solid floor-to-ceiling
+      plane, matching a real lobbed grenade. It's still blocked
+      normally by anything it's not yet above.
+    */
     resolveWallCollisionXZ(
-      clamped,.15
+      clamped,.15,g.pos.y
     );
     g.pos.x=clamped.x;
     g.pos.z=clamped.z;
@@ -9216,14 +9236,14 @@ loadTokens();
 /* =========================================================
    PARTY CODES — one-time redeemable codes entered in the shop
    for a flat token grant. Matching is case-insensitive/trimmed
-   so "LeBron94", " lebron94 ", etc. all work. Each code can only
+   so "QWERT", " qwert ", etc. all work. Each code can only
    be redeemed once per browser (tracked separately from tokens
    themselves, so it survives even a tokens-balance reset) —
    without that, reloading and re-entering the same code would
    be an infinite token exploit.
 ========================================================= */
 const REDEEM_CODES={
-  lebron94:1000
+  qwert:1000
 };
 const REDEEMED_CODES_KEY='bp_redeemed_codes_v1';
 let redeemedCodes=[];
