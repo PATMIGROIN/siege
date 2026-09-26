@@ -10040,7 +10040,20 @@ function beginDuelMatch(mapIndex,hostOp,joinOp){
     remoteInput.keys={};
     remoteInput.fire=false;
     remoteInput.reload=false;
+    /*
+      Clear out whatever single-player bots happen to be sitting
+      in these arrays right now — either leftovers from a match
+      that ended without full elimination (round won by bomb/
+      timeout with survivors still alive), or simply the initial
+      loadLevel(0) call at page load, which always runs
+      spawnMatch() and populates 5 enemies + 4 allies before the
+      player has deployed at all. Without this, going straight
+      into a duel leaves those old bots' meshes in the scene with
+      no AI driving them any more (duelMode turns off the bot-AI
+      loop entirely) — they just stand frozen where they were.
+    */
     enemies.forEach(e=>scene.remove(e.group));
+    allies.forEach(a=>scene.remove(a.group));
     enemies=[createDuelRemoteEnemy(joinOp)];
     allies=[];
     duelOppMaxHpMirror=joinOp.maxHp;
@@ -10048,6 +10061,7 @@ function beginDuelMatch(mapIndex,hostOp,joinOp){
   else{
     applyOperatorLoadout(joinOp);
     enemies.forEach(e=>scene.remove(e.group));
+    allies.forEach(a=>scene.remove(a.group));
     enemies=[];
     allies=[];
     if(duelHostAvatar){
