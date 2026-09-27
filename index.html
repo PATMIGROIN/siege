@@ -1183,6 +1183,16 @@ canvas{
     <button id="packSpinCloseBtn" style="display:none;font:700 12px system-ui,sans-serif;padding:8px 20px;border-radius:4px;border:none;background:#c9d94a;color:#0c0f0a;cursor:pointer;">CONTINUE</button>
   </div>
 </div>
+<div id="packBulkResultsOverlay" style="display:none;position:fixed;inset:0;background:rgba(6,8,6,.9);z-index:160000;font-family:inherit;">
+  <div style="max-width:760px;margin:5vh auto;background:#11150f;border:1px solid #2a3524;border-radius:10px;padding:24px 28px 30px;max-height:88vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <h2 id="packBulkResultsTitle" style="margin:0;color:#c9d94a;letter-spacing:.05em;font-size:19px;">RESULTS</h2>
+      <button id="packBulkResultsCloseBtn" style="background:none;border:1px solid #3a4a38;color:#9aa89a;border-radius:4px;padding:5px 12px;cursor:pointer;font:600 12px system-ui,sans-serif;">CLOSE</button>
+    </div>
+    <p id="packBulkResultsSummary" style="color:#8a9a86;font-size:12px;margin:2px 0 18px;"></p>
+    <div id="packBulkResultsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;"></div>
+  </div>
+</div>
 <div id="inventoryOverlay" style="display:none;position:fixed;inset:0;background:rgba(6,8,6,.86);z-index:150000;font-family:inherit;">
   <div style="max-width:820px;margin:5vh auto;background:#11150f;border:1px solid #2a3524;border-radius:10px;padding:24px 28px 30px;max-height:88vh;overflow-y:auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
@@ -9578,6 +9588,121 @@ function rollPack(pack){
   return pack.pool[0].id;
 }
 const packSpin={active:false,resolved:false};
+/*
+  MASS BUY — lets a player open several packs of the same kind in
+  one purchase (x1/x10/x25/x100, see renderPacksShop()). x1 still
+  goes through the full animated reel via buyPack()/openPackSpin()
+  above; anything bigger skips the multi-second-per-pack animation
+  (playing a real reel 100 times would take ~7 minutes) and instead
+  rolls every pack instantly, honestly, one at a time through the
+  exact same rollPack() odds, then shows every result at once in a
+  results grid (see openBulkPackResults()) — nothing is hidden or
+  summarized away, you can see and count every individual pull.
+*/
+let bulkPackActive=false;
+function buyPacksBulk(packId,qty){
+  const pack=ALPHA_PACKS.find(p=>p.id===packId);
+  const totalCost=pack?pack.cost*qty:0;
+  if(!pack||packSpin.active||bulkPackActive||tokens<totalCost)
+    return;
+  tokens-=totalCost;
+  const results=[];
+  let totalRefund=0;
+  for(let i=0;i<qty;i++){
+    const id=rollPack(pack);
+    const skin=OPERATOR_SKINS.find(s=>s.id===id);
+    const alreadyOwned=ownedSkins.includes(id);
+    let refund=0;
+    if(alreadyOwned){
+      refund=Math.round(pack.cost*ALPHA_PACK_DUPE_REFUND);
+      tokens+=refund;
+      totalRefund+=refund;
+    }
+    else{
+      ownedSkins.push(id);
+    }
+    results.push({skin,alreadyOwned,refund});
+  }
+  saveTokens();
+  saveSkins();
+  updateTokenHud();
+  playUiClick();
+  renderShop();
+  buildSkinMenu();
+  openBulkPackResults(pack,qty,results,totalRefund,totalCost);
+}
+function openBulkPackResults(pack,qty,results,totalRefund,totalCost){
+  const overlay=document.getElementById('packBulkResultsOverlay');
+  const title=document.getElementById('packBulkResultsTitle');
+  const summary=document.getElementById('packBulkResultsSummary');
+  const grid=document.getElementById('packBulkResultsGrid');
+  if(!overlay||!grid)
+    return;
+  bulkPackActive=true;
+  title.textContent=pack.name+' ×'+qty+' RESULTS';
+  title.style.color=pack.accent;
+  const newCount=results.filter(r=>!r.alreadyOwned).length;
+  const dupeCount=qty-newCount;
+  summary.textContent=
+    newCount+' NEW SKIN'+(newCount===1?'':'S')+' UNLOCKED — '+
+    dupeCount+' DUPLICATE'+(dupeCount===1?'':'S')+' REFUNDED '+
+    totalRefund+' TOKENS (SPENT '+totalCost+' TOTAL)';
+  grid.innerHTML='';
+  const frag=document.createDocumentFragment();
+  /*
+    Sorted rarest-first purely so a great pull isn't buried at
+    position #87 of a x100 buy — the roll order itself (and every
+    individual result) is unaffected, this only changes DISPLAY
+    order of results already fully decided above.
+  */
+  results
+    .map((r,i)=>({r,i}))
+    .sort((a,b)=>{
+      const ra=RARITY_ORDER.indexOf(a.r.skin.rarity);
+      const rb=RARITY_ORDER.indexOf(b.r.skin.rarity);
+      return ra!==rb?ra-rb:a.i-b.i;
+    })
+    .forEach(({r})=>{
+      const info=SKIN_RARITY_INFO[r.skin.rarity]||{label:'',color:'#9a9a86'};
+      const tile=document.createElement('div');
+      tile.className='invTile';
+      tile.style.borderColor=info.color+'55';
+      const swatch=document.createElement('div');
+      swatch.className='swatch';
+      swatch.style.background=
+        '#'+r.skin.base.toString(16).padStart(6,'0');
+      const name=document.createElement('div');
+      name.className='name';
+      name.textContent=r.skin.name;
+      const rarity=document.createElement('div');
+      rarity.className='packTag';
+      rarity.style.color=info.color;
+      rarity.textContent=info.label;
+      const status=document.createElement('div');
+      status.style.cssText=
+        'font:700 9px system-ui,sans-serif;letter-spacing:.4px;margin-top:2px;';
+      if(r.alreadyOwned){
+        status.style.color='#8a9a86';
+        status.textContent='DUPE +'+r.refund;
+      }
+      else{
+        status.style.color='#c9d94a';
+        status.textContent='NEW';
+      }
+      tile.appendChild(swatch);
+      tile.appendChild(name);
+      tile.appendChild(rarity);
+      tile.appendChild(status);
+      frag.appendChild(tile);
+    });
+  grid.appendChild(frag);
+  overlay.style.display='block';
+}
+function closeBulkPackResults(){
+  document.getElementById('packBulkResultsOverlay').style.display='none';
+  bulkPackActive=false;
+  playUiClick();
+}
 function buyPack(packId){
   const pack=ALPHA_PACKS.find(p=>p.id===packId);
   if(!pack||packSpin.active||tokens<pack.cost)
@@ -9737,17 +9862,44 @@ function renderPacksShop(){
     const owned=document.createElement('div');
     owned.className='packOwned';
     owned.textContent='Owned from this pack: '+ownedCount+'/'+totalCount;
-    const btn=document.createElement('button');
-    const afford=tokens>=pack.cost;
-    btn.style.cursor=afford?'pointer':'not-allowed';
-    btn.style.background=afford?pack.accent+'22':'#141a1e';
-    btn.style.color=afford?pack.accent:'#4a5a60';
-    btn.style.borderColor=afford?pack.accent+'88':'transparent';
-    btn.textContent=
-      (afford?'OPEN PACK — ':'NEED ')+pack.cost+' TOKENS';
-    btn.disabled=!afford||packSpin.active;
-    if(afford&&!packSpin.active)
-      btn.onclick=()=>buyPack(pack.id);
+    /*
+      MASS BUY ROW — x1 keeps the original single-pack flow (full
+      animated reel via buyPack()); x10/x25/x100 route through
+      buyPacksBulk() instead, which rolls that many packs instantly
+      (no per-pack animation — see the comment on buyPacksBulk())
+      and shows every result in one results grid.
+    */
+    const buyRow=document.createElement('div');
+    buyRow.style.cssText=
+      'display:flex;gap:5px;flex-wrap:wrap;';
+    const busy=packSpin.active||bulkPackActive;
+    [1,10,25,100].forEach(qty=>{
+      const cost=pack.cost*qty;
+      const afford=tokens>=cost;
+      const qBtn=document.createElement('button');
+      qBtn.dataset.qty=String(qty);
+      qBtn.style.cssText=
+        'flex:1;min-width:60px;text-align:center;line-height:1.5;'+
+        'font:700 11px system-ui,sans-serif;padding:6px 4px;border-radius:5px;'+
+        'cursor:'+(afford&&!busy?'pointer':'not-allowed')+';'+
+        'background:'+(afford?pack.accent+'22':'#141a1e')+';'+
+        'color:'+(afford?pack.accent:'#4a5a60')+';'+
+        'border:1px solid '+(afford?pack.accent+'88':'transparent')+';';
+      qBtn.innerHTML=
+        '×'+qty+
+        '<br><span style="font-size:8.5px;font-weight:600;opacity:.85;">'+
+        cost+' TOK</span>';
+      qBtn.disabled=!afford||busy;
+      if(afford&&!busy){
+        qBtn.onclick=()=>{
+          if(qty===1)
+            buyPack(pack.id);
+          else
+            buyPacksBulk(pack.id,qty);
+        };
+      }
+      buyRow.appendChild(qBtn);
+    });
     const oddsBtn=document.createElement('button');
     oddsBtn.style.cssText=
       'font:600 10px system-ui,sans-serif;background:none;'+
@@ -9758,7 +9910,7 @@ function renderPacksShop(){
     card.appendChild(title);
     card.appendChild(desc);
     card.appendChild(owned);
-    card.appendChild(btn);
+    card.appendChild(buyRow);
     card.appendChild(oddsBtn);
     grid.appendChild(card);
   });
@@ -9909,6 +10061,9 @@ document
 document
   .getElementById('packOddsCloseBtn')
   .addEventListener('click',closePackOdds);
+document
+  .getElementById('packBulkResultsCloseBtn')
+  .addEventListener('click',closeBulkPackResults);
 function renderShop(){
   renderPacksShop();
   const grid=document.getElementById('shopGrid');
