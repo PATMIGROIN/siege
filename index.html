@@ -1154,11 +1154,12 @@ canvas{
     <div style="color:#ffd54a;font:600 13px system-ui,sans-serif;margin-bottom:14px;">
       &#9733; BALANCE: <span id="shopTokenVal">0</span> TOKENS
     </div>
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:18px;flex-wrap:wrap;">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;flex-wrap:wrap;">
       <input id="partyCodeInput" maxlength="24" placeholder="PARTY CODE" style="text-transform:uppercase;letter-spacing:2px;font:700 12px 'Courier New',monospace;padding:8px 10px;width:150px;background:#0a0d0a;color:#c9d94a;border:1px solid #3a4a38;border-radius:4px;">
       <button id="partyCodeBtn" style="font:700 11px system-ui,sans-serif;padding:9px 14px;border-radius:4px;border:1px solid #3a4a38;background:#1c2420;color:#c9d94a;cursor:pointer;letter-spacing:.04em;">REDEEM</button>
       <span id="partyCodeMsg" style="font:600 11px system-ui,sans-serif;"></span>
     </div>
+    <p style="color:#6a7a76;font-size:10px;margin:0 0 16px;">Each party code can be redeemed once per day — resets daily at 4:00 PM Pacific.</p>
     <div style="border:1px solid #1f2a1c;border-radius:9px;padding:14px 14px 16px;margin-bottom:22px;background:rgba(20,26,18,.4);">
       <h3 style="margin:0 0 6px;color:#8fe8ff;letter-spacing:.04em;font-size:15px;">&#10052; LOOT PACKS</h3>
       <p style="color:#8a9aa0;font-size:11px;margin:0 0 12px;">
@@ -9234,13 +9235,23 @@ function addTokens(n){
 }
 loadTokens();
 /* =========================================================
-   PARTY CODES — one-time redeemable codes entered in the shop
-   for a flat token grant. Matching is case-insensitive/trimmed
-   so "QWERT", " qwert ", etc. all work. Each code can only
-   be redeemed once per browser (tracked separately from tokens
-   themselves, so it survives even a tokens-balance reset) —
-   without that, reloading and re-entering the same code would
-   be an infinite token exploit.
+   PARTY CODES — redeemable codes entered in the shop for a flat
+   token grant. Matching is case-insensitive/trimmed so "QWERT",
+   " qwert ", etc. all work. Each code resets daily at 4:00 PM
+   PACIFIC TIME (America/Los_Angeles, so PST/PDT is handled
+   automatically across daylight saving) rather than being a
+   pure one-time-ever redemption — see getPartyCodePeriodId().
+
+   There's no server here to run a cron reset on, so "resets at
+   4pm" is computed live, client-side, every time someone tries
+   to redeem: instead of storing "used: yes/no" per code, we
+   store which reset PERIOD it was last used in
+   (redeemedCodes[code] = '2026-08-19', say), and compare that
+   to the CURRENT period. Once the real-world clock crosses the
+   next 4pm-Pacific boundary, the period id changes, the stored
+   one no longer matches, and the code becomes redeemable again
+   automatically — no scheduled task, no server round-trip,
+   works purely off whatever clock the player's own device has.
 ========================================================= */
 const REDEEM_CODES={
   qwert:1000,
@@ -9250,17 +9261,64 @@ const REDEEM_CODES={
   haworth:1000,
   ih8school:1000
 };
-const REDEEMED_CODES_KEY='bp_redeemed_codes_v1';
-let redeemedCodes=[];
+/*
+  A "day" here runs 4:00 PM Pacific -> the next day's 4:00 PM
+  Pacific, and its period id is the calendar date (Pacific) that
+  window STARTED on. So at 3:59 PM Pacific the id is still
+  yesterday's date; the instant it turns 4:00 PM it flips to
+  today's date. Built from Intl's timezone conversion (not a
+  fixed UTC offset) so it stays correct across the PST/PDT
+  switch without any manual DST math.
+*/
+function getPartyCodePeriodId(){
+  const parts=
+    new Intl.DateTimeFormat('en-US',{
+      timeZone:'America/Los_Angeles',
+      year:'numeric',
+      month:'2-digit',
+      day:'2-digit',
+      hour:'2-digit',
+      hour12:false
+    }).formatToParts(new Date());
+  const get=
+    type=>parseInt(
+      parts.find(p=>p.type===type).value,10
+    );
+  const y=get('year');
+  const mo=get('month');
+  const d=get('day');
+  let h=get('hour');
+  /*
+    Some environments format midnight as hour "24" rather than
+    "00" under hour12:false — normalize it so the <16 check
+    below is never fooled into thinking 24 means "after 4pm".
+  */
+  if(h>=24)
+    h=0;
+  let periodStartUtcMs=
+    Date.UTC(y,mo-1,d,12);
+  if(h<16)
+    periodStartUtcMs-=86400000;
+  const pd=new Date(periodStartUtcMs);
+  return (
+    pd.getUTCFullYear()+'-'+
+    String(pd.getUTCMonth()+1).padStart(2,'0')+'-'+
+    String(pd.getUTCDate()).padStart(2,'0')
+  );
+}
+const REDEEMED_CODES_KEY='bp_redeemed_codes_v2';
+let redeemedCodes={};
 function loadRedeemedCodes(){
   try{
     const raw=localStorage.getItem(REDEEMED_CODES_KEY);
-    redeemedCodes=raw?JSON.parse(raw):[];
-    if(!Array.isArray(redeemedCodes))
-      redeemedCodes=[];
+    const parsed=raw?JSON.parse(raw):{};
+    redeemedCodes=
+      (parsed&&typeof parsed==='object'&&!Array.isArray(parsed))
+      ?parsed
+      :{};
   }
   catch(e){
-    redeemedCodes=[];
+    redeemedCodes={};
   }
 }
 function saveRedeemedCodes(){
@@ -9290,14 +9348,15 @@ function redeemPartyCode(){
     playUiClick();
     return;
   }
-  if(redeemedCodes.includes(raw)){
+  const currentPeriod=getPartyCodePeriodId();
+  if(redeemedCodes[raw]===currentPeriod){
     msg.style.color='#ff8a6a';
-    msg.textContent='CODE ALREADY USED';
+    msg.textContent='ALREADY REDEEMED — RESETS AT 4PM PT';
     playUiClick();
     return;
   }
   const amount=REDEEM_CODES[raw];
-  redeemedCodes.push(raw);
+  redeemedCodes[raw]=currentPeriod;
   saveRedeemedCodes();
   addTokens(amount);
   msg.style.color='#8fe0a8';
