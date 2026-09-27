@@ -4091,7 +4091,27 @@ let stanceOverride=null;
 document.addEventListener(
   'mousedown',
   e=>{
-    if(!locked)
+    /*
+      Normally gated behind pointer lock (no shooting from the
+      main menu just because the mouse happens to be over the
+      canvas). ONLINE DUEL EXCEPTION: the joiner's very first
+      requestPointerLock() call (see beginDuelMatch()) fires
+      from inside the WebRTC 'matchStart' message handler, not
+      a direct click — browsers refuse to grant pointer lock
+      from there since it isn't a real user gesture, so `locked`
+      can still be false for a moment (or longer, if lock never
+      ends up being (re)acquired) right as a duel round begins.
+      Without this exception EVERY input listener would stay
+      dead for that player — they'd never be able to move or
+      fire, and the other player would see them standing frozen
+      forever, which looked exactly like "the match isn't
+      syncing". Letting duelMode bypass the lock-check here
+      means shooting still works immediately either way; the
+      canvasEl 'click' listener further down still independently
+      (re)requests real pointer lock the moment they click,
+      which is a genuine gesture and reliably succeeds.
+    */
+    if(!locked&&!duelMode)
       return;
     if(e.button===0){
       mouseDown=true;
@@ -4154,7 +4174,13 @@ const keys={};
 window.addEventListener(
   'keydown',
   e=>{
-    if(!locked)
+    /*
+      Same online-duel exception as the 'mousedown' listener
+      above — WASD must keep working for a duel participant even
+      on the (common, for the joiner) frames where real pointer
+      lock hasn't been granted yet.
+    */
+    if(!locked&&!duelMode)
       return;
     const key=
       e.key.toLowerCase();
@@ -4227,7 +4253,7 @@ window.addEventListener(
 window.addEventListener(
   'keyup',
   e=>{
-    if(!locked)
+    if(!locked&&!duelMode)
       return;
     const key=
       e.key.toLowerCase();
@@ -7642,8 +7668,29 @@ function update(){
     :(deployedCamActive&&deployedCamCamera
       ?deployedCamCamera
       :camera);
+  /*
+    !locked normally freezes the whole simulation (fair — there's
+    no reason to run physics against a paused menu). ONLINE DUEL
+    EXCEPTION: on the JOINER's side, beginDuelMatch()'s automatic
+    canvasEl.requestPointerLock() call fires from inside the
+    WebRTC 'matchStart' message handler, not a synchronous click,
+    so browsers routinely refuse to grant it there (pointer lock
+    requires a real user gesture on the stack). If this whole
+    update() loop stayed gated on `locked`, that one denied lock
+    request would silently freeze that player's ENTIRE match —
+    no local movement, and (since the Net.send() calls further
+    down in this same function never even get reached) no 'in'
+    messages either, so the HOST would just see them standing
+    completely still all game. Duels now keep simulating and
+    syncing regardless of local pointer-lock state; see the
+    matching exception in the mousedown/keydown/keyup listeners
+    above for how those players still generate input without a
+    lock. Mouse-look still requires the OS cursor capture, so it
+    naturally kicks in for real once they click anywhere on the
+    canvas (see the plain click->requestPointerLock() listener).
+  */
   if(
-    !locked ||
+    (!locked&&!duelMode) ||
     gameState==='gameover' ||
     gameState==='victory' ||
     gameState==='menu' ||
