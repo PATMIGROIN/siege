@@ -1229,7 +1229,7 @@ canvas{
       <input id="joinCodeInput" maxlength="5" placeholder="ROOM CODE" style="text-transform:uppercase;letter-spacing:4px;text-align:center;font:700 16px 'Courier New',monospace;padding:10px;width:140px;background:#0a0d0a;color:#c9d94a;border:1px solid #3a4a38;border-radius:3px;">
       <button id="joinConnectBtn" style="margin-left:10px;padding:10px 20px;background:#c9d94a;color:#0c0f0a;border:none;font-family:inherit;font-weight:bold;letter-spacing:1px;font-size:12px;cursor:pointer;border-radius:3px;">CONNECT</button>
     </div>
-    <p style="color:#6a7a80;font-size:10px;margin-top:16px;">No operator abilities, grenades, wall-breaching, secondary weapon swap or utility gadgets in duel mode v1 — straight primary-weapon gunfights only.</p>
+    <p style="color:#6a7a80;font-size:10px;margin-top:16px;">Secondary weapons [V] and all four utility gadgets [4]/[5]/[6]/[7] — frag grenade, claymore, barbed wire, deployable camera — work in duel mode. Operator abilities [G] and wall-breaching are still disabled.</p>
     <button id="onlineBackBtn" style="margin-top:10px;background:none;border:1px solid #3a4a38;color:#9aa89a;border-radius:4px;padding:7px 18px;cursor:pointer;font:600 12px system-ui,sans-serif;">BACK</button>
   </div>
 </div>
@@ -1423,6 +1423,8 @@ canvas{
   <div>[V] SWAP: <span id="secondaryWeaponVal">M9 SIDEARM</span></div>
   <div>[4] <span id="utilAName">FRAG GRENADE</span> &times;<span id="utilACount">2</span></div>
   <div>[5] <span id="utilBName">CLAYMORE</span> &times;<span id="utilBCount">1</span></div>
+  <div id="utilCRow" style="display:none;">[6] <span id="utilCName">BARBED WIRE</span> &times;<span id="utilCCount">2</span></div>
+  <div id="utilDRow" style="display:none;">[7] <span id="utilDName">DEPLOY CAM</span> &times;<span id="utilDCount">1</span></div>
 </div>
 <div id="intelHud"></div>
 <div id="cameraHud"></div>
@@ -3732,6 +3734,7 @@ function buildOperator(
   group.userData.head=head;
   group.userData.legL=legL;
   group.userData.legR=legR;
+  group.userData.gun=enemyGun;
   if(isHeavy){
     group.scale.set(1.18,1.06,1.18);
   }
@@ -4178,7 +4181,9 @@ const gameplayKeys=new Set([
   '2',
   '3',
   '4',
-  '5'
+  '5',
+  '6',
+  '7'
 ]);
 const keys={};
 window.addEventListener(
@@ -4232,15 +4237,33 @@ window.addEventListener(
         switchWeaponSlot();
       }
       else if(key==='4'){
-        if(player.team==='attack')
+        /*
+          Online duels have no attack/defense split (see the big
+          comment atop the UTILITY GADGETS section), so [4]/[5]
+          always mean grenade/claymore there, freeing [6]/[7] for
+          wire/camera — both sides get all four either way.
+        */
+        if(duelMode)
+          useUtilityGrenade();
+        else if(player.team==='attack')
           useUtilityGrenade();
         else
           useBarbedWire();
       }
       else if(key==='5'){
-        if(player.team==='attack')
+        if(duelMode)
+          useClaymore();
+        else if(player.team==='attack')
           useClaymore();
         else
+          useDeployableCamera();
+      }
+      else if(key==='6'){
+        if(duelMode)
+          useBarbedWire();
+      }
+      else if(key==='7'){
+        if(duelMode)
           useDeployableCamera();
       }
     }
@@ -4424,9 +4447,12 @@ function updateHud(){
     /*
       UTILITY HUD — shows what [V] swaps to (the OTHER slot's
       weapon, not the active one — the active one is already
-      named right above in #weaponVal) and the two gadgets for
-      whichever side the player is currently on, with their
-      remaining per-round charges.
+      named right above in #weaponVal) and the gadgets available
+      right now, with their remaining per-round charges. Online
+      duels have no attack/defense split (see the UTILITY GADGETS
+      comment above useUtilityGrenade()), so both players get all
+      four gadgets at once — [4]/[5]/[6]/[7] — instead of the
+      team-based two shown in single-player.
     */
     const otherWeaponName=
       player.slot==='primary'
@@ -4434,18 +4460,36 @@ function updateHud(){
       : currentOperator.weapon.name;
     document.getElementById('secondaryWeaponVal').textContent=
       otherWeaponName;
-    const utilA=
-      player.team==='attack'
-      ? {name:'FRAG GRENADE',count:player.util.grenade}
-      : {name:'BARBED WIRE',count:player.util.wire};
-    const utilB=
-      player.team==='attack'
-      ? {name:'CLAYMORE',count:player.util.claymore}
-      : {name:'DEPLOY CAM',count:player.util.camera};
-    document.getElementById('utilAName').textContent=utilA.name;
-    document.getElementById('utilACount').textContent=utilA.count;
-    document.getElementById('utilBName').textContent=utilB.name;
-    document.getElementById('utilBCount').textContent=utilB.count;
+    const utilCRow=document.getElementById('utilCRow');
+    const utilDRow=document.getElementById('utilDRow');
+    if(duelMode){
+      document.getElementById('utilAName').textContent='FRAG GRENADE';
+      document.getElementById('utilACount').textContent=player.util.grenade;
+      document.getElementById('utilBName').textContent='CLAYMORE';
+      document.getElementById('utilBCount').textContent=player.util.claymore;
+      document.getElementById('utilCName').textContent='BARBED WIRE';
+      document.getElementById('utilCCount').textContent=player.util.wire;
+      document.getElementById('utilDName').textContent='DEPLOY CAM';
+      document.getElementById('utilDCount').textContent=player.util.camera;
+      utilCRow.style.display='block';
+      utilDRow.style.display='block';
+    }
+    else{
+      const utilA=
+        player.team==='attack'
+        ? {name:'FRAG GRENADE',count:player.util.grenade}
+        : {name:'BARBED WIRE',count:player.util.wire};
+      const utilB=
+        player.team==='attack'
+        ? {name:'CLAYMORE',count:player.util.claymore}
+        : {name:'DEPLOY CAM',count:player.util.camera};
+      document.getElementById('utilAName').textContent=utilA.name;
+      document.getElementById('utilACount').textContent=utilA.count;
+      document.getElementById('utilBName').textContent=utilB.name;
+      document.getElementById('utilBCount').textContent=utilB.count;
+      utilCRow.style.display='none';
+      utilDRow.style.display='none';
+    }
   }
   updateBossHud();
   if(duelMode)
@@ -5426,7 +5470,8 @@ function fireWeaponRay(origin,dir){
     if(
       closestIsHead&&
       !player.cheatActive&&
-      !closestEnemy.isBoss
+      !closestEnemy.isBoss&&
+      !closestEnemy.isDuelRemote
     ){
       /*
         Instant headshot kill — suppressed while the secret
@@ -5439,7 +5484,15 @@ function fireWeaponRay(origin,dir){
         a one-shot kill would skip the whole point of a boss
         fight, so a boss headshot instead does solid bonus
         damage (mirrors the cheat laser's own headshot
-        multiplier below) rather than an instant kill.
+        multiplier below) rather than an instant kill. And
+        suppressed for a live online-duel opponent
+        (isDuelRemote — see createDuelRemoteEnemy()): a real
+        person on the other end of the connection shouldn't be
+        one-tapped through a wall of pure luck the instant a
+        bullet clips their head hitbox, so duel headshots use
+        the same 1.6x multiplier as everything else non-instant
+        here instead (see duelResolveShotOnHost() for the
+        mirrored change on the other firing direction).
       */
       closestEnemy.hp=0;
     }
@@ -5456,6 +5509,17 @@ function fireWeaponRay(origin,dir){
       closestIsHead?.2:.12
     );
     playHitmarker(closestIsHead);
+    /*
+      Fires on ANY headshot hit, not just a killing one — this used
+      to only show on a kill, which was invisible feedback loss for
+      the boss (already non-instant) and now for duel opponents too
+      (see the isDuelRemote change above): a real headshot that only
+      does bonus damage instead of insta-killing still deserves the
+      same "HEADSHOT" confirmation a lethal one always got.
+    */
+    if(closestIsHead){
+      showMsg('HEADSHOT',700);
+    }
     if(
       closestEnemy.hp<=0 &&
       !closestEnemy.dead
@@ -5467,9 +5531,6 @@ function fireWeaponRay(origin,dir){
       score+=
         closestIsHead?150:100;
       addTokens(10);
-      if(closestIsHead){
-        showMsg('HEADSHOT',700);
-      }
       triggerFinisher(endPoint);
       checkEliminationWin();
     }
@@ -6760,13 +6821,16 @@ function triggerAbility(){
       break;
   }
 }
-function throwFragCharge(){
-  const dir=
-    new THREE.Vector3();
-  camera.getWorldDirection(dir);
-  const startPos=
-    camera.position.clone()
-      .addScaledVector(dir,.5);
+/*
+  Shared by a local throw (see throwFragCharge() below, which
+  derives pos/dir from the camera) and a REMOTE throw mirrored
+  over the network in an online duel (see handleRemoteUtility())
+  — same mesh, same push into the same `grenades` array so the
+  existing unconditional per-frame physics/explosion loop in
+  update() (and explodeGrenade()'s existing enemies+player damage
+  check) handles both identically with zero extra branching.
+*/
+function spawnGrenadeProjectile(pos,dir){
   const mesh=
     new THREE.Mesh(
       new THREE.SphereGeometry(.12,8,8),
@@ -6776,12 +6840,12 @@ function throwFragCharge(){
         roughness:.5
       })
     );
-  mesh.position.copy(startPos);
+  mesh.position.copy(pos);
   mesh.castShadow=true;
   scene.add(mesh);
   grenades.push({
     mesh,
-    pos:startPos.clone(),
+    pos:pos.clone(),
     vel:
       dir.clone()
         .multiplyScalar(15)
@@ -6790,6 +6854,34 @@ function throwFragCharge(){
     dead:false
   });
 }
+function throwFragCharge(){
+  const dir=
+    new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const startPos=
+    camera.position.clone()
+      .addScaledVector(dir,.5);
+  spawnGrenadeProjectile(startPos,dir);
+  return {pos:startPos,dir};
+}
+/*
+  Unlike claymores/barbed wire (see explodeClaymore()/
+  updateBarbedWires()), a grenade needs NO owner-awareness for
+  online duels: it already unconditionally checks both `enemies`
+  (only ever non-empty on the HOST, where it's always the
+  joiner's stand-in) AND `player` (whichever side is actually
+  running this function). Since every grenade thrown in a duel —
+  by either side — only ever gets its real, authoritative
+  simulation on the HOST (see handleRemoteUtility() pushing a
+  matching grenade into the host's own `grenades` array the
+  instant the joiner throws one), this same dual check already
+  lands on exactly the right target every time: a host-thrown
+  grenade hits `enemies` (the joiner) + splashes `player` (the
+  host) on self-proximity, and a joiner-thrown grenade (now
+  simulated here on the host) hits `enemies` (the joiner
+  themselves, correct self-splash risk) + `player` (the host, the
+  actual intended target) — no branching needed either way.
+*/
 function explodeGrenade(pos){
   const R=5.5;
   enemies.forEach(en=>{
@@ -6886,7 +6978,7 @@ function applyActiveWeaponStats(){
     :player.primaryAmmo;
 }
 function switchWeaponSlot(){
-  if(duelMode||player.cheatActive)
+  if(player.cheatActive)
     return;
   if(!currentOperator||gameState!=='playing'||player.hp<=0)
     return;
@@ -6929,12 +7021,24 @@ function applySecondaryWeaponVisual(secondaryId){
   }
 }
 /* =========================================================
-   UTILITY GADGETS — two per side (see player.util/UTIL_CHARGES
-   above), bound to [4]/[5] and branched by player.team in the
-   keydown handler. Scope note: single-player only, same as
-   operator abilities/grenades/wall-breaching — bots never place
-   counter-gadgets, and none of this runs in online duel mode
-   (no networking for placed world objects yet).
+   UTILITY GADGETS — two per side in single-player (see
+   player.util/UTIL_CHARGES above), bound to [4]/[5] and
+   branched by player.team in the keydown handler. In an online
+   duel BOTH players get all four (no attack/defense split — see
+   the keydown handler's duelMode branch adding [6]/[7]), and
+   every placement is mirrored to the opponent over the network
+   (see the Net.send({t:'util',...}) call in each use* function
+   below and handleRemoteUtility()) so both players can actually
+   see each other's claymores/wire/camera in the world, not just
+   feel their effects. The HOST stays the single source of truth
+   for damage exactly like gunfire: a claymore/wire placed by the
+   JOINER is tracked authoritatively on the HOST (owner:'join'),
+   which is the only place it's ever allowed to actually hurt the
+   HOST's own player — see explodeClaymore()/updateClaymores()/
+   updateBarbedWires() below for the owner-aware branches, and
+   the generic "player.hp<=0 -> duelEndRound(false,...)" catch-all
+   near hostTickDuel()'s call site in update(), which covers any
+   of these non-gunfire ways the host can now die.
 ========================================================= */
 function utilityPlacementPoint(dist){
   const dir=new THREE.Vector3();
@@ -6947,36 +7051,18 @@ function utilityPlacementPoint(dist){
   const z=player.z+dir.z*dist;
   return {x,z,y:getGroundHeightAt(x,z),dir};
 }
-function useUtilityGrenade(){
-  if(duelMode||gameState!=='playing'||player.hp<=0)
-    return;
-  if(player.team!=='attack'){
-    showMsg('ATTACKERS ONLY',900);
-    return;
-  }
-  if(player.util.grenade<=0){
-    showMsg('NO FRAG GRENADES LEFT',900);
-    return;
-  }
-  player.util.grenade--;
-  throwFragCharge();
-  playAbilitySound();
-  showMsg('FRAG GRENADE THROWN ('+player.util.grenade+' LEFT)',1000);
-  updateHud();
+/*
+  duelMode's owner tag for whatever *I* place locally right now —
+  used both when pushing a new claymore/wire entry and when
+  broadcasting it, so the receiving side (and, on the host, the
+  authoritative trigger/damage checks) always know whose device
+  this is. Outside duelMode this is unused (single-player never
+  reads .owner at all).
+*/
+function myUtilityOwnerTag(){
+  return Net.isHost?'host':'join';
 }
-function useClaymore(){
-  if(duelMode||gameState!=='playing'||player.hp<=0)
-    return;
-  if(player.team!=='attack'){
-    showMsg('ATTACKERS ONLY',900);
-    return;
-  }
-  if(player.util.claymore<=0){
-    showMsg('NO CLAYMORES LEFT',900);
-    return;
-  }
-  player.util.claymore--;
-  const p=utilityPlacementPoint(2.4);
+function buildClaymoreMesh(){
   const group=new THREE.Group();
   const base=
     new THREE.Mesh(
@@ -6998,93 +7084,9 @@ function useClaymore(){
     );
   eye.position.set(0,.2,.05);
   group.add(eye);
-  group.position.set(p.x,p.y,p.z);
-  group.lookAt(p.x+p.dir.x,p.y,p.z+p.dir.z);
-  scene.add(group);
-  claymores.push({
-    mesh:group,x:p.x,z:p.z,armTime:.8,dead:false
-  });
-  playAbilitySound();
-  showMsg('CLAYMORE PLACED ('+player.util.claymore+' LEFT)',1200);
-  updateHud();
+  return group;
 }
-function explodeClaymore(x,z){
-  /*
-    A claymore is meant to read as an outright kill at close
-    range, not just "a strong grenade" — 220 base damage clears
-    even a difficulty-boosted enemy's HP pool (op.maxHp*up to
-    ~1.3-1.7x, see makeBot()) at anything under roughly half the
-    trigger radius, tapering off to a graze near the edge.
-  */
-  const R=3.2;
-  enemies.forEach(en=>{
-    if(en.dead)
-      return;
-    const d=Math.hypot(en.x-x,en.z-z);
-    if(d<R){
-      const dmg=220*(1-d/R);
-      en.hp-=dmg;
-      en.fireCd=Math.max(en.fireCd,1.2);
-      en.alert=true;
-      if(en.hp<=0&&!en.dead){
-        en.dead=true;
-        scene.remove(en.group);
-        score+=100;
-        addTokens(10);
-        triggerFinisher(
-          new THREE.Vector3(en.x,1.2,en.z)
-        );
-        checkEliminationWin();
-      }
-    }
-  });
-  const pd=Math.hypot(player.x-x,player.z-z);
-  if(pd<2.2){
-    player.hp-=Math.round(30*(1-pd/2.2));
-  }
-  const pos=new THREE.Vector3(x,.8,z);
-  spawnGlowParticle(pos,0xff8020,4,.4);
-  spawnGlowParticle(pos,0xffe0a0,2,.22);
-  spawnFlashLight(pos,0xff9040,6,.3);
-}
-function updateClaymores(dt){
-  if(claymores.length===0)
-    return;
-  claymores.forEach(c=>{
-    if(c.dead)
-      return;
-    if(c.armTime>0){
-      c.armTime-=dt;
-      return;
-    }
-    let triggered=false;
-    enemies.forEach(en=>{
-      if(en.dead||triggered)
-        return;
-      if(Math.hypot(en.x-c.x,en.z-c.z)<1.6)
-        triggered=true;
-    });
-    if(triggered){
-      c.dead=true;
-      scene.remove(c.mesh);
-      explodeClaymore(c.x,c.z);
-    }
-  });
-  claymores=claymores.filter(c=>!c.dead);
-}
-function useBarbedWire(){
-  if(duelMode||gameState!=='playing'||player.hp<=0)
-    return;
-  if(player.team!=='defense'){
-    showMsg('DEFENDERS ONLY',900);
-    return;
-  }
-  if(player.util.wire<=0){
-    showMsg('NO BARBED WIRE LEFT',900);
-    return;
-  }
-  player.util.wire--;
-  const p=utilityPlacementPoint(2.2);
+function buildBarbedWireMesh(){
   const group=new THREE.Group();
   for(let i=0;i<3;i++){
     const coil=
@@ -7098,64 +7100,9 @@ function useBarbedWire(){
     coil.position.set((i-1)*.28,.08,0);
     group.add(coil);
   }
-  group.position.set(p.x,p.y,p.z);
-  scene.add(group);
-  barbedWires.push({mesh:group,x:p.x,z:p.z,r:1.3});
-  playAbilitySound();
-  showMsg('BARBED WIRE DEPLOYED ('+player.util.wire+' LEFT)',1200);
-  updateHud();
+  return group;
 }
-function updateBarbedWires(dt){
-  if(barbedWires.length===0)
-    return;
-  enemies.forEach(en=>{
-    if(en.dead)
-      return;
-    en.wireSlowed=false;
-    for(const w of barbedWires){
-      if(Math.hypot(en.x-w.x,en.z-w.z)<w.r){
-        en.wireSlowed=true;
-        en.hp-=8*dt;
-        if(en.hp<=0&&!en.dead){
-          en.dead=true;
-          scene.remove(en.group);
-          score+=100;
-          addTokens(10);
-          triggerFinisher(
-            new THREE.Vector3(en.x,1.2,en.z)
-          );
-          checkEliminationWin();
-        }
-        break;
-      }
-    }
-  });
-}
-function useDeployableCamera(){
-  if(duelMode||gameState!=='playing'||player.hp<=0)
-    return;
-  if(player.team!=='defense'){
-    showMsg('DEFENDERS ONLY',900);
-    return;
-  }
-  if(deployedCamGroup){
-    deployedCamActive=!deployedCamActive;
-    viewingCamIndex=-1;
-    showMsg(
-      deployedCamActive
-      ?'VIEWING DEPLOYED CAMERA'
-      :'CAMERA VIEW EXITED',
-      1000
-    );
-    return;
-  }
-  if(player.util.camera<=0){
-    showMsg('NO CAMERA LEFT',900);
-    return;
-  }
-  player.util.camera--;
-  const p=utilityPlacementPoint(1.6);
-  const py=1.9+p.y;
+function buildCameraPropMesh(){
   const group=new THREE.Group();
   const box=
     new THREE.Mesh(
@@ -7179,6 +7126,250 @@ function useDeployableCamera(){
   lens.rotation.x=Math.PI/2;
   lens.position.z=.18;
   group.add(lens);
+  return group;
+}
+function useUtilityGrenade(){
+  if(gameState!=='playing'||player.hp<=0)
+    return;
+  if(!duelMode&&player.team!=='attack'){
+    showMsg('ATTACKERS ONLY',900);
+    return;
+  }
+  if(player.util.grenade<=0){
+    showMsg('NO FRAG GRENADES LEFT',900);
+    return;
+  }
+  player.util.grenade--;
+  const thrown=throwFragCharge();
+  if(duelMode){
+    Net.send({
+      t:'util',kind:'grenade',
+      x:thrown.pos.x,y:thrown.pos.y,z:thrown.pos.z,
+      dirX:thrown.dir.x,dirY:thrown.dir.y,dirZ:thrown.dir.z
+    });
+  }
+  playAbilitySound();
+  showMsg('FRAG GRENADE THROWN ('+player.util.grenade+' LEFT)',1000);
+  updateHud();
+}
+function useClaymore(){
+  if(gameState!=='playing'||player.hp<=0)
+    return;
+  if(!duelMode&&player.team!=='attack'){
+    showMsg('ATTACKERS ONLY',900);
+    return;
+  }
+  if(player.util.claymore<=0){
+    showMsg('NO CLAYMORES LEFT',900);
+    return;
+  }
+  player.util.claymore--;
+  const p=utilityPlacementPoint(2.4);
+  const group=buildClaymoreMesh();
+  group.position.set(p.x,p.y,p.z);
+  group.lookAt(p.x+p.dir.x,p.y,p.z+p.dir.z);
+  scene.add(group);
+  claymores.push({
+    mesh:group,x:p.x,z:p.z,armTime:.8,dead:false,
+    owner:duelMode?myUtilityOwnerTag():undefined
+  });
+  if(duelMode){
+    Net.send({t:'util',kind:'claymore',x:p.x,z:p.z,dirX:p.dir.x,dirZ:p.dir.z});
+  }
+  playAbilitySound();
+  showMsg('CLAYMORE PLACED ('+player.util.claymore+' LEFT)',1200);
+  updateHud();
+}
+function explodeClaymore(x,z,owner){
+  /*
+    A claymore is meant to read as an outright kill at close
+    range, not just "a strong grenade" — 220 base damage clears
+    even a difficulty-boosted enemy's HP pool (op.maxHp*up to
+    ~1.3-1.7x, see makeBot()) at anything under roughly half the
+    trigger radius, tapering off to a graze near the edge.
+
+    owner==='join'&&Net.isHost means this is a claymore the
+    JOINER placed, now tracked authoritatively here on the HOST
+    (see handleRemoteUtility()) — its real target is the HOST's
+    own player, not `enemies` (which in duelMode IS the joiner,
+    i.e. the person who placed it). Every other case — a
+    single-player claymore, or the HOST's own claymore in a duel
+    — keeps the original enemies+player-splash behavior
+    unchanged.
+  */
+  const R=3.2;
+  if(duelMode&&owner==='join'&&Net.isHost){
+    const pd=Math.hypot(player.x-x,player.z-z);
+    if(pd<R){
+      player.hp-=Math.round(220*(1-pd/R));
+    }
+  }
+  else{
+    enemies.forEach(en=>{
+      if(en.dead)
+        return;
+      const d=Math.hypot(en.x-x,en.z-z);
+      if(d<R){
+        const dmg=220*(1-d/R);
+        en.hp-=dmg;
+        en.fireCd=Math.max(en.fireCd,1.2);
+        en.alert=true;
+        if(en.hp<=0&&!en.dead){
+          en.dead=true;
+          scene.remove(en.group);
+          score+=100;
+          addTokens(10);
+          triggerFinisher(
+            new THREE.Vector3(en.x,1.2,en.z)
+          );
+          checkEliminationWin();
+        }
+      }
+    });
+    const pd=Math.hypot(player.x-x,player.z-z);
+    if(pd<2.2){
+      player.hp-=Math.round(30*(1-pd/2.2));
+    }
+  }
+  const pos=new THREE.Vector3(x,.8,z);
+  spawnGlowParticle(pos,0xff8020,4,.4);
+  spawnGlowParticle(pos,0xffe0a0,2,.22);
+  spawnFlashLight(pos,0xff9040,6,.3);
+}
+function updateClaymores(dt){
+  if(claymores.length===0)
+    return;
+  claymores.forEach(c=>{
+    if(c.dead)
+      return;
+    if(c.armTime>0){
+      c.armTime-=dt;
+      return;
+    }
+    let triggered=false;
+    if(duelMode&&c.owner==='join'&&Net.isHost){
+      if(Math.hypot(player.x-c.x,player.z-c.z)<1.6)
+        triggered=true;
+    }
+    else{
+      enemies.forEach(en=>{
+        if(en.dead||triggered)
+          return;
+        if(Math.hypot(en.x-c.x,en.z-c.z)<1.6)
+          triggered=true;
+      });
+    }
+    if(triggered){
+      c.dead=true;
+      scene.remove(c.mesh);
+      explodeClaymore(c.x,c.z,c.owner);
+    }
+  });
+  claymores=claymores.filter(c=>!c.dead);
+}
+function useBarbedWire(){
+  if(gameState!=='playing'||player.hp<=0)
+    return;
+  if(!duelMode&&player.team!=='defense'){
+    showMsg('DEFENDERS ONLY',900);
+    return;
+  }
+  if(player.util.wire<=0){
+    showMsg('NO BARBED WIRE LEFT',900);
+    return;
+  }
+  player.util.wire--;
+  const p=utilityPlacementPoint(2.2);
+  const group=buildBarbedWireMesh();
+  group.position.set(p.x,p.y,p.z);
+  scene.add(group);
+  barbedWires.push({
+    mesh:group,x:p.x,z:p.z,r:1.3,
+    owner:duelMode?myUtilityOwnerTag():undefined
+  });
+  if(duelMode){
+    Net.send({t:'util',kind:'wire',x:p.x,z:p.z});
+  }
+  playAbilitySound();
+  showMsg('BARBED WIRE DEPLOYED ('+player.util.wire+' LEFT)',1200);
+  updateHud();
+}
+function updateBarbedWires(dt){
+  if(barbedWires.length===0)
+    return;
+  enemies.forEach(en=>{
+    if(en.dead)
+      return;
+    en.wireSlowed=false;
+    for(const w of barbedWires){
+      /*
+        A join-owned wire threatens the HOST's own player (see
+        below), not `enemies` (the joiner themselves) — skip it
+        here so it isn't double-counted.
+      */
+      if(duelMode&&w.owner==='join')
+        continue;
+      if(Math.hypot(en.x-w.x,en.z-w.z)<w.r){
+        en.wireSlowed=true;
+        en.hp-=8*dt;
+        if(en.hp<=0&&!en.dead){
+          en.dead=true;
+          scene.remove(en.group);
+          score+=100;
+          addTokens(10);
+          triggerFinisher(
+            new THREE.Vector3(en.x,1.2,en.z)
+          );
+          checkEliminationWin();
+        }
+        break;
+      }
+    }
+  });
+  /*
+    Authoritative check for a JOINER-placed wire threatening the
+    HOST's own player — only ever meaningful on the host, exactly
+    like the claymore owner-branch above. The resulting death (if
+    any) is picked up by the generic per-frame catch-all near
+    hostTickDuel()'s call site rather than duplicated here.
+  */
+  if(duelMode&&Net.isHost){
+    for(const w of barbedWires){
+      if(w.owner!=='join')
+        continue;
+      if(Math.hypot(player.x-w.x,player.z-w.z)<w.r){
+        player.hp-=8*dt;
+        break;
+      }
+    }
+  }
+}
+function useDeployableCamera(){
+  if(gameState!=='playing'||player.hp<=0)
+    return;
+  if(!duelMode&&player.team!=='defense'){
+    showMsg('DEFENDERS ONLY',900);
+    return;
+  }
+  if(deployedCamGroup){
+    deployedCamActive=!deployedCamActive;
+    viewingCamIndex=-1;
+    showMsg(
+      deployedCamActive
+      ?'VIEWING DEPLOYED CAMERA'
+      :'CAMERA VIEW EXITED',
+      1000
+    );
+    return;
+  }
+  if(player.util.camera<=0){
+    showMsg('NO CAMERA LEFT',900);
+    return;
+  }
+  player.util.camera--;
+  const p=utilityPlacementPoint(1.6);
+  const py=1.9+p.y;
+  const group=buildCameraPropMesh();
   group.position.set(p.x,py,p.z);
   group.lookAt(p.x+p.dir.x*4,py,p.z+p.dir.z*4);
   scene.add(group);
@@ -7191,9 +7382,70 @@ function useDeployableCamera(){
   deployedCamCamera.lookAt(
     p.x+p.dir.x*4,py-.3,p.z+p.dir.z*4
   );
+  if(duelMode){
+    Net.send({t:'util',kind:'camera',x:p.x,y:py,z:p.z,dirX:p.dir.x,dirZ:p.dir.z});
+  }
   playAbilitySound();
   showMsg('CAMERA DEPLOYED — PRESS [5] AGAIN TO VIEW',1600);
   updateHud();
+}
+/*
+  REMOTE UTILITY — the receiving half of every Net.send({t:'util',
+  ...}) call above. Grenades are pushed straight into the same
+  `grenades` array a local throw uses (see the big comment on
+  explodeGrenade() for why that's already symmetric/correct with
+  zero extra bookkeeping); claymores/wire are pushed into
+  `claymores`/`barbedWires` tagged with the SENDER's owner (from
+  my perspective, whatever I'm not) so the owner-aware branches
+  in explodeClaymore()/updateClaymores()/updateBarbedWires() take
+  over automatically; a camera is purely cosmetic (it has no
+  gameplay effect on the opponent — only the placer can ever look
+  through it) so it just gets a mesh, tracked in remoteCamProps
+  for round-cleanup.
+*/
+let remoteCamProps=[];
+function clearRemoteUtilityVisuals(){
+  remoteCamProps.forEach(m=>scene.remove(m));
+  remoteCamProps=[];
+}
+function handleRemoteUtility(data){
+  if(!duelMode)
+    return;
+  const theirOwnerTag=Net.isHost?'join':'host';
+  if(data.kind==='grenade'){
+    spawnGrenadeProjectile(
+      new THREE.Vector3(data.x||0,data.y||0,data.z||0),
+      new THREE.Vector3(data.dirX||0,data.dirY||0,data.dirZ||-1)
+    );
+  }
+  else if(data.kind==='claymore'){
+    const group=buildClaymoreMesh();
+    group.position.set(data.x,getGroundHeightAt(data.x,data.z),data.z);
+    group.lookAt(data.x+(data.dirX||0),group.position.y,data.z+(data.dirZ||0));
+    scene.add(group);
+    claymores.push({
+      mesh:group,x:data.x,z:data.z,armTime:.8,dead:false,
+      owner:theirOwnerTag
+    });
+  }
+  else if(data.kind==='wire'){
+    const group=buildBarbedWireMesh();
+    group.position.set(data.x,getGroundHeightAt(data.x,data.z),data.z);
+    scene.add(group);
+    barbedWires.push({
+      mesh:group,x:data.x,z:data.z,r:1.3,
+      owner:theirOwnerTag
+    });
+  }
+  else if(data.kind==='camera'){
+    const group=buildCameraPropMesh();
+    group.position.set(data.x,data.y,data.z);
+    group.lookAt(
+      data.x+(data.dirX||0)*4,data.y,data.z+(data.dirZ||0)*4
+    );
+    scene.add(group);
+    remoteCamProps.push(group);
+  }
 }
 function activateCloak(){
   player.cloakTimer=5;
@@ -7904,6 +8156,25 @@ function update(){
   if(player.cloakTimer>0){
     baseSpeed*=1.3;
   }
+  /*
+    Barbed wire slows the LOCAL player too now that duels use the
+    same gadget systems bots/single-player already had (see
+    hostTickDuel()'s matching check for the remote, and
+    updateBarbedWires() for the actual damage). Only ever excludes
+    MY OWN placements (myUtilityOwnerTag()) — walking near your
+    own wire shouldn't slow you down, only the opponent's.
+  */
+  if(duelMode){
+    const myTag=myUtilityOwnerTag();
+    for(const w of barbedWires){
+      if(w.owner===myTag)
+        continue;
+      if(Math.hypot(player.x-w.x,player.z-w.z)<w.r){
+        baseSpeed*=.4;
+        break;
+      }
+    }
+  }
   player.aimT+=
     (
       (aiming?1:0)-player.aimT
@@ -8217,11 +8488,31 @@ function update(){
   }
   if(duelMode&&duelRoundActive){
     if(Net.isHost){
+      /*
+        Generic host-death catch-all — duelResolveShotOnHost()
+        already ends the round the instant gunfire drops
+        player.hp to 0, but now that claymores/barbed wire/
+        grenade splash can ALSO kill the host (self-damage from
+        the host's own gadget, or an authoritative join-owned
+        gadget — see explodeClaymore()/updateBarbedWires()), this
+        catches every OTHER cause uniformly instead of duplicating
+        the same wasAlive-edge check in each of them.
+        duelEndRound() is idempotent (it no-ops once
+        duelRoundActive is already false), so calling it every
+        frame while dead is harmless — it only actually fires once.
+      */
+      if(player.hp<=0){
+        duelEndRound(
+          false,
+          'YOU WERE ELIMINATED — OPPONENT WINS THE ROUND'
+        );
+      }
       Net.send({
         t:'snap',
         hx:player.x,
         hz:player.z,
         hyaw:player.yaw,
+        hpitch:player.pitch,
         hostHp:player.hp,
         joinHp:enemies[0]?enemies[0].hp:0,
         hw:duelHostWins,
@@ -8240,6 +8531,7 @@ function update(){
         },
         yaw:player.yaw,
         pitch:player.pitch,
+        slot:player.slot,
         fire:mouseDown&&player.hp>0,
         reload:!!keys['r']
       });
@@ -10900,10 +11192,13 @@ document
    from ever disagreeing about who won, and closes off any
    client-side "I didn't die" cheating.
 
-   Scope note (v1): operator abilities/grenades/wall-breaching
-   are disabled for the whole duel (see triggerAbility() and
-   the 'f' guard in update()) since their world-mutating effects
-   aren't networked — straight gunfights on foot only.
+   Scope note: operator abilities and wall-breaching are still
+   disabled for the whole duel (see triggerAbility() and the 'f'
+   guard in update()) — those stay out of scope. Secondary
+   weapons and utility gadgets (grenade/claymore/wire/camera) ARE
+   networked (see the UTILITY GADGETS section and
+   Net.send({t:'util',...})/handleRemoteUtility() below) and work
+   for both players.
 ========================================================= */
 const Net={
   peer:null,
@@ -11030,6 +11325,7 @@ const remoteInput={
   keys:{},
   yaw:0,
   pitch:0,
+  slot:'primary',
   fire:false,
   reload:false
 };
@@ -11107,6 +11403,20 @@ function createDuelRemoteEnemy(op){
     op,
     hp:op.maxHp,
     maxHp:op.maxHp,
+    /*
+      Slot-aware ammo — mirrors the local player's own
+      primaryAmmo/secondaryAmmo split (see applyOperatorLoadout())
+      now that the joiner can swap to their sidearm mid-duel (see
+      hostTickDuel()/remoteActiveWeaponDef()). ammo/maxAmmo are
+      kept too since a few other spots (HUD-less, but harmless)
+      may still read them; they just aren't the source of truth
+      for firing/reload logic any more.
+    */
+    slot:'primary',
+    primaryAmmo:op.weapon.mag,
+    secondaryAmmo:SECONDARY_WEAPONS[op.secondary].mag,
+    primaryReloadCd:0,
+    secondaryReloadCd:0,
     ammo:op.weapon.mag,
     maxAmmo:op.weapon.mag,
     fireCd:0,
@@ -11137,6 +11447,11 @@ function createDuelRemoteEnemy(op){
   Object3D.getWorldDirection() does not; using the wrong one
   here would silently aim every joiner shot 180° backwards.
 */
+function remoteActiveWeaponDef(remote){
+  return remote.slot==='secondary'
+    ?SECONDARY_WEAPONS[remote.op.secondary]
+    :remote.op.weapon;
+}
 function hostTickDuel(dt){
   const remote=enemies[0];
   if(!remote||remote.dead)
@@ -11152,11 +11467,30 @@ function hostTickDuel(dt){
   mx/=mag;
   mz/=mag;
   const yaw=remoteInput.yaw||0;
+  const pitch=
+    Math.max(-1.45,Math.min(1.45,remoteInput.pitch||0));
   _moveForward.set(0,0,-1).applyAxisAngle(_moveWorldUp,yaw);
   _moveRight.set(1,0,0).applyAxisAngle(_moveWorldUp,yaw);
+  /*
+    Barbed wire slows the remote's movement exactly like it
+    slows a bot (see runBotAI's wireSlowMul) — a HOST-owned wire
+    threatens the joiner just like it threatens an enemy bot in
+    single-player (see updateBarbedWires()). A JOIN-owned wire is
+    the joiner's OWN device, so it's excluded here — walking near
+    your own wire doesn't trap you.
+  */
+  let wireSlowMul=1;
+  for(const w of barbedWires){
+    if(w.owner==='join')
+      continue;
+    if(Math.hypot(remote.x-w.x,remote.z-w.z)<w.r){
+      wireSlowMul=.4;
+      break;
+    }
+  }
   const spdBase=
     5.2*(remote.op.speedMul||1)*
-    (k.shift?1.55:1);
+    (k.shift?1.55:1)*wireSlowMul;
   const spd=spdBase*dt;
   _moveDir.set(0,0,0);
   _moveDir.addScaledVector(_moveForward,-mz);
@@ -11176,45 +11510,95 @@ function hostTickDuel(dt){
   const gy=getGroundHeightAt(remote.x,remote.z);
   remote.group.position.set(remote.x,gy,remote.z);
   remote.group.rotation.y=yaw;
+  /*
+    AIM VISUAL — tilts the held gun prop to visibly track the
+    joiner's real pitch (see remoteInput.pitch, sent every frame
+    in the 'in' message), so the host can actually see which way
+    the joiner is looking/aiming, not just their yaw-only body
+    facing. gun.rotation.x=-.05 is the model's resting downward
+    carry angle (see buildOperator()); positive pitch (looking
+    up — see the camera.rotation.x convention above in update())
+    tilts the barrel up by the same amount.
+  */
+  const remoteGun=remote.group.userData.gun;
+  if(remoteGun)
+    remoteGun.rotation.x=-.05+pitch;
+  /*
+    SLOT-AWARE AMMO — the joiner can now swap to their sidearm
+    mid-duel (see switchWeaponSlot(), no longer blocked by
+    duelMode), so the host has to track BOTH mags/reload timers
+    independently, exactly like the local player's own
+    primaryAmmo/secondaryAmmo/applyActiveWeaponStats() do — a
+    single flat remote.ammo can't represent "which gun is this
+    ammo count even for" once there are two.
+  */
+  remote.slot=remoteInput.slot==='secondary'?'secondary':'primary';
+  const weaponDef=remoteActiveWeaponDef(remote);
+  if(remote.slot==='secondary'){
+    if(remote.secondaryReloadCd>0){
+      remote.secondaryReloadCd=Math.max(0,remote.secondaryReloadCd-dt);
+      if(remote.secondaryReloadCd<=0)
+        remote.secondaryAmmo=weaponDef.mag;
+    }
+  }
+  else if(remote.primaryReloadCd>0){
+    remote.primaryReloadCd=Math.max(0,remote.primaryReloadCd-dt);
+    if(remote.primaryReloadCd<=0)
+      remote.primaryAmmo=weaponDef.mag;
+  }
+  const ammoKey=
+    remote.slot==='secondary'?'secondaryAmmo':'primaryAmmo';
+  const reloadKey=
+    remote.slot==='secondary'?'secondaryReloadCd':'primaryReloadCd';
   if(remote.fireCd>0)
     remote.fireCd=Math.max(0,remote.fireCd-dt);
-  if(remote.reloadCd>0){
-    remote.reloadCd=Math.max(0,remote.reloadCd-dt);
-    if(remote.reloadCd<=0)
-      remote.ammo=remote.maxAmmo;
-  }
   if(
     remoteInput.reload&&
-    remote.ammo<remote.maxAmmo&&
-    remote.reloadCd<=0
+    remote[ammoKey]<weaponDef.mag&&
+    remote[reloadKey]<=0
   ){
-    remote.reloadCd=remote.op.weapon.reload;
+    remote[reloadKey]=weaponDef.reload;
   }
   if(
     remoteInput.fire&&
-    remote.ammo>0&&
+    remote[ammoKey]>0&&
     remote.fireCd<=0&&
-    remote.reloadCd<=0
+    remote[reloadKey]<=0
   ){
-    remote.ammo--;
-    remote.fireCd=remote.op.weapon.fireCd;
+    remote[ammoKey]--;
+    remote.fireCd=weaponDef.fireCd;
     if(!_remoteAimCam)
       _remoteAimCam=new THREE.PerspectiveCamera();
     _remoteAimCam.rotation.order='YXZ';
     _remoteAimCam.rotation.y=yaw;
-    _remoteAimCam.rotation.x=
-      Math.max(-1.45,Math.min(1.15,remoteInput.pitch||0));
+    _remoteAimCam.rotation.x=pitch;
     _remoteAimCam.position.set(remote.x,gy+1.6,remote.z);
     _remoteAimCam.updateMatrixWorld(true);
-    const dir=new THREE.Vector3();
-    _remoteAimCam.getWorldDirection(dir);
-    duelResolveShotOnHost(
-      remote,
-      _remoteAimCam.position.clone(),
-      dir
-    );
-    if(remote.ammo<=0)
-      remote.reloadCd=remote.op.weapon.reload;
+    const baseDir=new THREE.Vector3();
+    _remoteAimCam.getWorldDirection(baseDir);
+    const right=
+      new THREE.Vector3()
+        .setFromMatrixColumn(_remoteAimCam.matrixWorld,0);
+    const up=
+      new THREE.Vector3()
+        .setFromMatrixColumn(_remoteAimCam.matrixWorld,1);
+    const pelletCount=weaponDef.pellets||1;
+    for(let i=0;i<pelletCount;i++){
+      const spread=weaponDef.spread||0;
+      const dir=
+        baseDir.clone()
+          .addScaledVector(right,(Math.random()-.5)*2*spread)
+          .addScaledVector(up,(Math.random()-.5)*2*spread)
+          .normalize();
+      duelResolveShotOnHost(
+        remote,
+        _remoteAimCam.position.clone(),
+        dir,
+        weaponDef
+      );
+    }
+    if(remote[ammoKey]<=0)
+      remote[reloadKey]=weaponDef.reload;
   }
 }
 /*
@@ -11225,8 +11609,14 @@ function hostTickDuel(dt){
   botFireAt) because neither fits: fireWeaponRay always targets
   `enemies`, and botFireAt uses a random accuracy-roll model
   meant for bots, not a real aimed shot from another human.
+
+  weaponDef is whichever weapon (primary op.weapon, or one of
+  SECONDARY_WEAPONS if the joiner's currently on their sidearm —
+  see hostTickDuel(), which knows remoteInput.slot) actually
+  fired this particular shot, so damage/range/name all reflect
+  whichever weapon the joiner really had up at the time.
 */
-function duelResolveShotOnHost(shooter,origin,dir){
+function duelResolveShotOnHost(shooter,origin,dir,weaponDef){
   let wallDist=Infinity;
   raycaster.set(origin,dir);
   for(const w of walls){
@@ -11242,7 +11632,7 @@ function duelResolveShotOnHost(shooter,origin,dir){
         wallDist=d;
     }
   }
-  const range=shooter.op.weapon.range;
+  const range=weaponDef.range;
   const groundY=getGroundHeightAt(player.x,player.z);
   const bodyRadius=.42;
   const headMinY=1.68+groundY;
@@ -11271,8 +11661,32 @@ function duelResolveShotOnHost(shooter,origin,dir){
   if(player.spawnGrace>0)
     return;
   const wasAlive=player.hp>0;
-  const dmg=isHead?9999:shooter.op.weapon.dmg;
+  /*
+    Headshots against a real opponent are strong, not lethal in
+    one tap — same 1.6x multiplier fireWeaponRay() now uses for
+    the mirrored direction (host shooting the joiner). See the
+    comment there for why an instant kill was removed.
+  */
+  const dmg=isHead?weaponDef.dmg*1.6:weaponDef.dmg;
   player.hp-=dmg;
+  /*
+    The JOINER's own shots never run fireWeaponRay() against a
+    real local target — their `enemies` array is intentionally
+    empty in a duel (see beginDuelMatch()), since the HOST is the
+    one resolving every shot, right here. Without this, whoever's
+    joining gets no hitmarker sound and no "HEADSHOT" text ever,
+    for the entire match, even on a solid hit — the only feedback
+    they'd otherwise get is the opponent's HP ticking down on the
+    next 'snap'. Send the result back so their client can play the
+    same hit feedback fireWeaponRay() gives for free on the host's
+    side.
+  */
+  Net.send({
+    t:'hitConfirm',
+    isHead,
+    dmg:Math.round(dmg),
+    killed:wasAlive&&player.hp<=0
+  });
   document.getElementById('damageOverlay').style.opacity=.7;
   setTimeout(
     ()=>{
@@ -11284,7 +11698,7 @@ function duelResolveShotOnHost(shooter,origin,dir){
     startDeathCam(
       shooter,
       isHead,
-      shooter.op.weapon.name,
+      weaponDef.name,
       shooter.op.name
     );
     duelEndRound(
@@ -11393,6 +11807,18 @@ function applyDuelSnap(data){
     const gy=getGroundHeightAt(data.hx,data.hz);
     duelHostAvatar.position.set(data.hx,gy,data.hz);
     duelHostAvatar.rotation.y=data.hyaw;
+    /*
+      Same aim-visual treatment as the host's mirror of the
+      joiner (see hostTickDuel()) — now the joiner can see which
+      way the host is actually looking too, not just their body
+      facing.
+    */
+    const hostGun=duelHostAvatar.userData.gun;
+    if(hostGun){
+      const hpitch=
+        Math.max(-1.45,Math.min(1.45,data.hpitch||0));
+      hostGun.rotation.x=-.05+hpitch;
+    }
   }
 }
 function handleDuelOpponentLeft(){
@@ -11434,6 +11860,25 @@ function resetDuelRound(){
   document.getElementById('killCamBanner').style.opacity=0;
   document.getElementById('detonate').style.display='none';
   clearDuelTransientFx();
+  /*
+    Utility/secondary refresh — every round starts back on the
+    primary weapon with both mags topped off and a fresh set of
+    utility charges, and any claymores/wire/camera left over from
+    the round that just ended are cleared, exactly matching
+    resetRound()'s single-player per-round treatment now that
+    duels use the same systems (see useUtilityGrenade() and
+    friends no longer being blocked by duelMode).
+  */
+  player.slot='primary';
+  if(currentOperator){
+    player.primaryAmmo=currentOperator.weapon.mag;
+    player.secondaryAmmo=SECONDARY_WEAPONS[currentOperator.secondary].mag;
+    applyActiveWeaponStats();
+    updateWeaponModel(currentOperator);
+  }
+  resetUtilityCharges();
+  clearFieldGadgets();
+  clearRemoteUtilityVisuals();
   if(Net.isHost){
     player.x=DUEL_HOST_SPAWN.x;
     player.z=DUEL_HOST_SPAWN.z;
@@ -11444,7 +11889,6 @@ function resetDuelRound(){
       resolveDecorationCollision(player,player.r);
     }
     player.hp=player.maxHp;
-    player.ammo=player.maxAmmo;
     player.reloadCd=0;
     player.spawnGrace=SPAWN_GRACE_DURATION;
     const remote=enemies[0];
@@ -11457,6 +11901,11 @@ function resetDuelRound(){
         resolveDecorationCollision(remote,remote.r);
       }
       remote.hp=remote.maxHp;
+      remote.slot='primary';
+      remote.primaryAmmo=remote.op.weapon.mag;
+      remote.secondaryAmmo=SECONDARY_WEAPONS[remote.op.secondary].mag;
+      remote.primaryReloadCd=0;
+      remote.secondaryReloadCd=0;
       remote.ammo=remote.maxAmmo;
       remote.reloadCd=0;
       remote.fireCd=0;
@@ -11465,10 +11914,13 @@ function resetDuelRound(){
       remote.group.visible=true;
       remote.group.position.set(remote.x,gy,remote.z);
       remote.group.rotation.y=remote.yaw;
+      if(remote.group.userData.gun)
+        remote.group.userData.gun.rotation.x=-.05;
       scene.add(remote.group);
     }
     remoteInput.fire=false;
     remoteInput.reload=false;
+    remoteInput.slot='primary';
   }
   else{
     player.x=DUEL_JOIN_SPAWN.x;
@@ -11480,7 +11932,6 @@ function resetDuelRound(){
       resolveDecorationCollision(player,player.r);
     }
     player.hp=player.maxHp;
-    player.ammo=player.maxAmmo;
     player.reloadCd=0;
     player.spawnGrace=SPAWN_GRACE_DURATION;
     _lastJoinHpSeen=player.hp;
@@ -11491,6 +11942,8 @@ function resetDuelRound(){
       );
       duelHostAvatar.rotation.y=DUEL_HOST_SPAWN.yaw;
       duelHostAvatar.visible=true;
+      if(duelHostAvatar.userData.gun)
+        duelHostAvatar.userData.gun.rotation.x=-.05;
     }
   }
   camera.rotation.order='YXZ';
@@ -11507,7 +11960,7 @@ function resetDuelRound(){
   document.getElementById('scopeOverlay').style.opacity=0;
   document.getElementById('ammoHud').style.display='block';
   document.getElementById('abilityHud').style.display='none';
-  document.getElementById('utilityHud').style.display='none';
+  document.getElementById('utilityHud').style.display='block';
   document.getElementById('stanceHud').style.display='block';
   document.getElementById('spectateHud').style.display='none';
   hasShownSpectateMsg=false;
@@ -11607,8 +12060,12 @@ function openDuelLobbyAsHost(){
       remoteInput.keys=data.k||{};
       remoteInput.yaw=data.yaw||0;
       remoteInput.pitch=data.pitch||0;
+      remoteInput.slot=data.slot==='secondary'?'secondary':'primary';
       remoteInput.fire=!!data.fire;
       remoteInput.reload=!!data.reload;
+    }
+    else if(data.t==='util'&&duelMode&&Net.isHost){
+      handleRemoteUtility(data);
     }
   };
   Net.onClose=()=>{
@@ -11670,6 +12127,21 @@ function openDuelLobbyAsJoin(code){
     }
     else if(data.t==='roundEnd'&&!Net.isHost&&duelMode){
       handleDuelRoundEnd(data);
+    }
+    else if(data.t==='util'&&duelMode&&!Net.isHost){
+      handleRemoteUtility(data);
+    }
+    else if(data.t==='hitConfirm'&&duelMode&&!Net.isHost){
+      /*
+        See the matching Net.send() in duelResolveShotOnHost() —
+        the host just resolved a shot WE fired (our `enemies` array
+        is always empty in a duel, so our own local fireWeaponRay()
+        call never sees a target to give us this feedback itself).
+      */
+      playHitmarker(data.isHead);
+      if(data.isHead){
+        showMsg('HEADSHOT',700);
+      }
     }
   };
   Net.onClose=()=>{
