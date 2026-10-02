@@ -5509,17 +5509,6 @@ function fireWeaponRay(origin,dir){
       closestIsHead?.2:.12
     );
     playHitmarker(closestIsHead);
-    /*
-      Fires on ANY headshot hit, not just a killing one — this used
-      to only show on a kill, which was invisible feedback loss for
-      the boss (already non-instant) and now for duel opponents too
-      (see the isDuelRemote change above): a real headshot that only
-      does bonus damage instead of insta-killing still deserves the
-      same "HEADSHOT" confirmation a lethal one always got.
-    */
-    if(closestIsHead){
-      showMsg('HEADSHOT',700);
-    }
     if(
       closestEnemy.hp<=0 &&
       !closestEnemy.dead
@@ -5534,6 +5523,22 @@ function fireWeaponRay(origin,dir){
       triggerFinisher(endPoint);
       checkEliminationWin();
     }
+    /*
+      Report the hit back to the caller instead of announcing
+      "HEADSHOT" directly here — playerShoot() fires this function
+      once PER PELLET for a shotgun (pellets:6-8, see SECONDARY_
+      WEAPONS.shorty / PLAYER_OPS siege.weapon), and a wide spread
+      against a big target (especially the 1.7x-scaled boss) means
+      it's common for one stray pellet out of eight to clip the
+      head window purely by chance even while aiming dead-center
+      at the chest — showing "HEADSHOT" here unconditionally for
+      every hit that happens to be a head hit made that near-
+      constant for shotgun users. playerShoot() now decides,
+      across the whole trigger pull, whether enough of the pellets
+      that actually connected were head hits to really call it a
+      headshot (see the aggregation there).
+    */
+    return {hit:true,isHead:closestIsHead};
   }
   else if(
     hitWall &&
@@ -5561,6 +5566,7 @@ function fireWeaponRay(origin,dir){
       destroyWall(hitWall);
     }
   }
+  return {hit:false,isHead:false};
 }
 function playerShoot(){
   if(
@@ -5629,6 +5635,17 @@ function playerShoot(){
   );
   const pelletCount=
     player.pellets||1;
+  /*
+    Tracked across the WHOLE trigger pull (every pellet of a
+    shotgun blast, not each one individually) so a single stray
+    pellet clipping the head hitbox by pure spread luck doesn't
+    get to call the shot a "HEADSHOT" on its own — see the
+    decision after this loop, and the comment on fireWeaponRay()'s
+    returned {hit,isHead} for why that call no longer announces it
+    directly.
+  */
+  let pelletsConnected=0;
+  let pelletsHeadshot=0;
   for(
     let i=0;
     i<pelletCount;
@@ -5648,10 +5665,35 @@ function playerShoot(){
           (Math.random()-.5)*2*spread
         )
         .normalize();
-    fireWeaponRay(
-      origin,
-      dir
-    );
+    const result=
+      fireWeaponRay(
+        origin,
+        dir
+      );
+    if(result&&result.hit){
+      pelletsConnected++;
+      if(result.isHead)
+        pelletsHeadshot++;
+    }
+  }
+  /*
+    A single pellet is the common case (every weapon but the two
+    shotguns) — connected+headshot both true means the usual
+    one-hit headshot confirmation, unchanged. For a multi-pellet
+    blast, only call it a headshot once at least HALF of the
+    pellets that actually landed were head hits, so a shot aimed
+    at the chest that merely clips the head with one of eight
+    pellets (very possible against the boss's much bigger, scaled-
+    up hit window — see the comment in fireWeaponRay()) reads as
+    the body hit it mostly was, while a shot genuinely aimed at
+    the head — where most or all pellets connect there — still
+    gets full credit.
+  */
+  if(
+    pelletsHeadshot>0 &&
+    pelletsHeadshot*2>=pelletsConnected
+  ){
+    showMsg('HEADSHOT',700);
   }
   if(
     player.ammo<=0
