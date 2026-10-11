@@ -530,6 +530,7 @@ canvas{
   background:rgba(20,18,10,.65);
   padding:4px 12px;
   border:1px solid rgba(255,208,96,.4);
+  border-left:3px solid rgba(255,208,96,.9);
   opacity:0;
   transition:opacity .25s ease;
   white-space:nowrap;
@@ -1524,6 +1525,19 @@ const _moveForward=new THREE.Vector3();
 const _moveWorldUp=new THREE.Vector3(0,1,0);
 const _moveRight=new THREE.Vector3();
 const _moveDir=new THREE.Vector3();
+/*
+  PERFORMANCE: same reused-scratch-vector pattern as the move
+  vectors above, for the INTEL SCAN HUD block (see the
+  player.intelTimer branch in update()) and botFireAt() — both
+  were allocating fresh THREE.Vector3()s every frame/shot
+  instead of reusing one.
+*/
+const _intelForward=new THREE.Vector3();
+const _intelRight=new THREE.Vector3();
+const _intelToEnemy=new THREE.Vector3();
+const _intelUp=new THREE.Vector3(0,1,0);
+const _botFireOrigin=new THREE.Vector3();
+const _botFireTarget=new THREE.Vector3();
 const camera = new THREE.PerspectiveCamera(
   75,
   window.innerWidth/window.innerHeight,
@@ -1537,11 +1551,28 @@ renderer.setSize(
   window.innerWidth,
   window.innerHeight
 );
+/*
+  PERFORMANCE: capped at 1.5 rather than 2 — on a 2x-DPR
+  (retina/high-DPI) display, going from 1.5x to 2x roughly
+  doubles the fragment-shading cost (pixel count scales with
+  the SQUARE of the ratio) for a difference that's barely
+  perceptible on a fast-moving FPS, so this is a close-to-free
+  frame-rate win.
+*/
 renderer.setPixelRatio(
-  Math.min(window.devicePixelRatio,2)
+  Math.min(window.devicePixelRatio,1.5)
 );
 renderer.shadowMap.enabled=true;
-renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+/*
+  PCFShadowMap (hard-ish, cheap) instead of PCFSoftShadowMap —
+  soft shadows resample the shadow map several times per
+  fragment, which adds up fast once a level's crates/barrels/
+  sandbags (see the decoration builders below) are all casting
+  shadows at once. Visually close enough at this camera
+  distance that the swap isn't worth noticing, but meaningfully
+  cheaper every frame.
+*/
+renderer.shadowMap.type=THREE.PCFShadowMap;
 renderer.outputEncoding=THREE.sRGBEncoding;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure=1.15;
@@ -1583,8 +1614,14 @@ dirLight.position.set(
   20,40,10
 );
 dirLight.castShadow=true;
+/*
+  PERFORMANCE: 1024 instead of 2048 — a quarter the shadow-map
+  memory/render cost for a difference you won't see on a
+  character-scale FPS camera (shadow softness/resolution at
+  this distance was already overkill at 2048).
+*/
 dirLight.shadow.mapSize.set(
-  2048,2048
+  1024,1024
 );
 dirLight.shadow.camera.left=-50;
 dirLight.shadow.camera.right=50;
@@ -2534,6 +2571,8 @@ function destroyWall(wall){
           scene.remove(
             hole.mesh
           );
+          hole.mesh.geometry.dispose();
+          hole.mesh.material.dispose();
           return false;
         }
         return true;
@@ -3889,7 +3928,15 @@ function makeBot(pos,op,team,isBetter){
     progressTimer:0,
     lastProgressD:Infinity,
     navTarget:null,
-    navRecalcT:0
+    navRecalcT:0,
+    /*
+      VOLT's EMP BURST (see useEmpBurst()) sets this on any bot
+      caught in the blast; botFireAt()'s own call site checks it
+      alongside fireCd so a jammed bot simply can't pull the
+      trigger until it decays back to 0, same shape as every
+      other bot timer here.
+    */
+    jammedTimer:0
   };
 }
 function spawnMatch(){
@@ -4428,6 +4475,7 @@ function clearFieldGadgets(){
   claymores=[];
   barbedWires.forEach(w=>scene.remove(w.mesh));
   barbedWires=[];
+  fireZones=[];
   clearDeployedCamera();
 }
 function clearDeployedCamera(){
@@ -4472,11 +4520,18 @@ function addScreenShake(amount){
   ready-made label; it stacks up to KILL_FEED_MAX entries (oldest
   pushed out immediately rather than overflowing) and fades each
   one out on its own timer.
+
+  The optional `accent` param (every call site now passes
+  currentOperator.accent when it's available) tints the entry's
+  left border with whatever operator actually got the kill —
+  that color already exists on every PLAYER_OPS entry for the
+  operator-select UI, so this is just reusing data that was
+  already there instead of every kill reading identically.
 */
 const KILL_FEED_MAX=4;
 const KILL_FEED_HOLD_MS=2200;
 const KILL_FEED_FADE_MS=250;
-function addKillFeedEntry(text){
+function addKillFeedEntry(text,accent){
   const feed=document.getElementById('killFeed');
   if(!feed)
     return;
@@ -4485,6 +4540,8 @@ function addKillFeedEntry(text){
   const entry=document.createElement('div');
   entry.className='killFeedEntry';
   entry.textContent=text;
+  if(accent)
+    entry.style.borderLeftColor=accent;
   feed.appendChild(entry);
   requestAnimationFrame(()=>entry.classList.add('show'));
   setTimeout(()=>{
@@ -4724,6 +4781,22 @@ function createBulletHole(
     mesh:hole,
     wall:wall
   });
+  /*
+    PERFORMANCE: a long firefight against the same wall can
+    otherwise accumulate hundreds of these, each its own
+    geometry+material that never gets freed. Cap the array and
+    retire the single oldest hole whenever a new one would push
+    past it — visually unnoticeable (you're not staring at a
+    150-hole-old scorch mark), but keeps both the live mesh
+    count and GPU memory bounded for the whole match.
+  */
+  const BULLET_HOLE_CAP=150;
+  if(bulletHoles.length>BULLET_HOLE_CAP){
+    const oldest=bulletHoles.shift();
+    scene.remove(oldest.mesh);
+    oldest.mesh.geometry.dispose();
+    oldest.mesh.material.dispose();
+  }
 }
 /* =========================================================
    WALL BULLET HOLE CALCULATION
@@ -5692,7 +5765,8 @@ function fireWeaponRay(origin,dir){
       addKillFeedEntry(
         (closestIsHead?'HEADSHOT — ':'')+
         'ELIMINATED '+
-        (closestEnemy.op?closestEnemy.op.name:'ENEMY')
+        (closestEnemy.op?closestEnemy.op.name:'ENEMY'),
+        currentOperator?currentOperator.accent:null
       );
     }
     /*
@@ -6053,13 +6127,13 @@ function botFireAt(shooter,target){
   if(blocked)
     return;
   const origin=
-    new THREE.Vector3(
+    _botFireOrigin.set(
       shooter.x,
       1.6+getGroundHeightAt(shooter.x,shooter.z),
       shooter.z
     );
   const targetPos=
-    new THREE.Vector3(
+    _botFireTarget.set(
       target.x,
       (isPlayer?player.height:1.6)+getGroundHeightAt(target.x,target.z),
       target.z
@@ -6562,9 +6636,12 @@ function runBotAI(bot,opponents,dt){
       }
     }
     bot.fireCd-=dt;
+    if(bot.jammedTimer>0)
+      bot.jammedTimer=Math.max(0,bot.jammedTimer-dt);
     if(
       target &&
       bot.fireCd<=0 &&
+      bot.jammedTimer<=0 &&
       !lineOfSightBlocked(
         bot.x,bot.z,target.x,target.z
       )
@@ -7098,6 +7175,12 @@ function triggerAbility(){
     case 'aegis':
       useRallyHeal();
       break;
+    case 'volt':
+      useEmpBurst();
+      break;
+    case 'ash':
+      throwIncendiaryCharge();
+      break;
   }
 }
 /*
@@ -7109,12 +7192,13 @@ function triggerAbility(){
   update() (and explodeGrenade()'s existing enemies+player damage
   check) handles both identically with zero extra branching.
 */
-function spawnGrenadeProjectile(pos,dir){
+function spawnGrenadeProjectile(pos,dir,kind){
+  const isIncendiary=kind==='incendiary';
   const mesh=
     new THREE.Mesh(
       new THREE.SphereGeometry(.12,8,8),
       new THREE.MeshStandardMaterial({
-        color:0x2a3020,
+        color:isIncendiary?0x5a2a14:0x2a3020,
         metalness:.4,
         roughness:.5
       })
@@ -7130,7 +7214,8 @@ function spawnGrenadeProjectile(pos,dir){
         .multiplyScalar(15)
         .add(new THREE.Vector3(0,4,0)),
     fuse:1.4,
-    dead:false
+    dead:false,
+    kind:kind||'frag'
   });
 }
 function throwFragCharge(){
@@ -7192,7 +7277,8 @@ function explodeGrenade(pos){
         checkEliminationWin();
         addKillFeedEntry(
           'FRAG CHARGE — ELIMINATED '+
-          (en.op?en.op.name:'ENEMY')
+          (en.op?en.op.name:'ENEMY'),
+          currentOperator?currentOperator.accent:null
         );
       }
     }
@@ -7510,7 +7596,8 @@ function explodeClaymore(x,z,owner){
           checkEliminationWin();
           addKillFeedEntry(
             'CLAYMORE — ELIMINATED '+
-            (en.op?en.op.name:'ENEMY')
+            (en.op?en.op.name:'ENEMY'),
+            currentOperator?currentOperator.accent:null
           );
         }
       }
@@ -7902,6 +7989,167 @@ function useRallyHeal(){
   );
 }
 /*
+  EMP BURST (Volt) — an instant, radius-based CROWD CONTROL
+  ability rather than damage or healing: every living enemy
+  within EMP_RADIUS gets jammedTimer set (see makeBot()'s field
+  and the jammedTimer<=0 check runBotAI() now adds alongside
+  fireCd before calling botFireAt()), so they simply can't pull
+  the trigger until it decays back to 0 — same timer shape as
+  every other bot/player status effect in the game, just applied
+  to a whole group of bots at once instead of one target.
+*/
+const EMP_RADIUS=12;
+const EMP_JAM_DURATION=5;
+function useEmpBurst(){
+  let jammedCount=0;
+  enemies.forEach(en=>{
+    if(en.dead||en.hp<=0)
+      return;
+    const d=
+      Math.hypot(en.x-player.x,en.z-player.z);
+    if(d>EMP_RADIUS)
+      return;
+    en.jammedTimer=EMP_JAM_DURATION;
+    jammedCount++;
+    spawnGlowParticle(
+      new THREE.Vector3(en.x,1.4,en.z),
+      0x4ad8ff,1.6,.4
+    );
+  });
+  spawnGlowParticle(
+    new THREE.Vector3(player.x,1.3,player.z),
+    0x4ad8ff,5,.4
+  );
+  spawnFlashLight(
+    new THREE.Vector3(player.x,1.6,player.z),
+    0x4ad8ff,7,.4
+  );
+  showMsg(
+    'EMP BURST — '+
+    jammedCount+' '+
+    (jammedCount===1?'WEAPON':'WEAPONS')+
+    ' JAMMED',
+    1600
+  );
+}
+/*
+  INCENDIARY CHARGE (Ash) — throws the exact same projectile as
+  FRAG CHARGE (same arc/physics, see spawnGrenadeProjectile()),
+  now tagged kind:'incendiary' so the grenades.forEach fuse-
+  expiry branch in update() detonates it with explodeIncendiary()
+  instead of explodeGrenade(). That detonation does a smaller
+  immediate hit than a frag charge, then leaves a burning
+  fireZones entry behind (see updateFireZones(), called from
+  update() right alongside updateBarbedWires() — same "anyone
+  standing in the radius takes damage every frame" shape as
+  barbed wire, just time-limited instead of a permanent
+  placement) so staying in the area after the blast keeps
+  costing HP.
+*/
+function throwIncendiaryCharge(){
+  const dir=
+    new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const startPos=
+    camera.position.clone()
+      .addScaledVector(dir,.5);
+  spawnGrenadeProjectile(startPos,dir,'incendiary');
+  return {pos:startPos,dir};
+}
+let fireZones=[];
+const FIRE_ZONE_DOT_DMG_PER_SEC=14;
+function explodeIncendiary(pos){
+  const R=4.2;
+  enemies.forEach(en=>{
+    if(en.dead)
+      return;
+    const d=
+      Math.hypot(en.x-pos.x,en.z-pos.z);
+    if(d<R){
+      const dmg=40*(1-d/R);
+      en.hp-=dmg;
+      en.fireCd=Math.max(en.fireCd,1.2);
+      en.alert=true;
+      if(en.hp<=0&&!en.dead){
+        en.dead=true;
+        scene.remove(en.group);
+        score+=100;
+        addTokens(10);
+        triggerFinisher(
+          new THREE.Vector3(en.x,1.2,en.z)
+        );
+        checkEliminationWin();
+        addKillFeedEntry(
+          'INCENDIARY CHARGE — ELIMINATED '+
+          (en.op?en.op.name:'ENEMY'),
+          currentOperator?currentOperator.accent:null
+        );
+      }
+    }
+  });
+  const pd=
+    Math.hypot(player.x-pos.x,player.z-pos.z);
+  if(pd<2.6){
+    player.hp-=
+      Math.round(14*(1-pd/2.6));
+    addScreenShake(.5);
+  }
+  fireZones.push({
+    x:pos.x,
+    z:pos.z,
+    r:3.2,
+    ttl:4,
+    nextPuffAt:0
+  });
+  spawnGlowParticle(pos,0xff6a20,5,.5);
+  spawnGlowParticle(pos,0xffb060,2.5,.3);
+  spawnFlashLight(pos,0xff7a30,6,.4);
+}
+function updateFireZones(dt){
+  if(fireZones.length===0)
+    return;
+  fireZones.forEach(z=>{
+    z.ttl-=dt;
+    z.nextPuffAt-=dt;
+    if(z.nextPuffAt<=0){
+      z.nextPuffAt=.35;
+      spawnGlowParticle(
+        new THREE.Vector3(
+          z.x+(Math.random()-.5)*z.r,
+          .3,
+          z.z+(Math.random()-.5)*z.r
+        ),
+        0xff6a20,1.1,.4
+      );
+    }
+    enemies.forEach(en=>{
+      if(en.dead)
+        return;
+      if(Math.hypot(en.x-z.x,en.z-z.z)>=z.r)
+        return;
+      en.hp-=FIRE_ZONE_DOT_DMG_PER_SEC*dt;
+      en.alert=true;
+      if(en.hp<=0&&!en.dead){
+        en.dead=true;
+        scene.remove(en.group);
+        score+=100;
+        addTokens(10);
+        triggerFinisher(
+          new THREE.Vector3(en.x,1.2,en.z)
+        );
+        checkEliminationWin();
+        addKillFeedEntry(
+          'INCENDIARY CHARGE — ELIMINATED '+
+          (en.op?en.op.name:'ENEMY'),
+          currentOperator?currentOperator.accent:null
+        );
+      }
+    });
+  });
+  fireZones=
+    fireZones.filter(z=>z.ttl>0);
+}
+/*
   FORTIFY (Titan) — a timed damage-resistance window, same
   timer-field-plus-overlay shape as CLOAK PULSE/OVERDRIVE (see
   activateCloak()/activateOverdrive() above): set the timer here,
@@ -8065,11 +8313,17 @@ function resetRound(){
   camera.fov=BASE_FOV;
   camera.updateProjectionMatrix();
   camera.rotation.z=0;
-  for(const b of bulletTracers)
+  for(const b of bulletTracers){
     scene.remove(b.mesh);
+    b.mesh.geometry.dispose();
+    b.mesh.material.dispose();
+  }
   bulletTracers=[];
-  for(const hole of bulletHoles)
+  for(const hole of bulletHoles){
     scene.remove(hole.mesh);
+    hole.mesh.geometry.dispose();
+    hole.mesh.material.dispose();
+  }
   bulletHoles=[];
   for(const p of particles)
     scene.remove(p.spr);
@@ -8385,16 +8639,15 @@ function update(){
     const intelEl=
       document.getElementById('intelHud');
     intelEl.style.display='block';
-    const camForward=
-      new THREE.Vector3();
+    const camForward=_intelForward;
     camera.getWorldDirection(camForward);
     camForward.y=0;
     camForward.normalize();
     const camRight=
-      new THREE.Vector3()
+      _intelRight
         .crossVectors(
           camForward,
-          new THREE.Vector3(0,1,0)
+          _intelUp
         )
         .normalize();
     const bearingNames=[
@@ -8406,7 +8659,7 @@ function update(){
         .filter(en=>!en.dead)
         .map(en=>{
           const toEnemy=
-            new THREE.Vector3(
+            _intelToEnemy.set(
               en.x-player.x,
               0,
               en.z-player.z
@@ -8972,7 +9225,10 @@ function update(){
     g.mesh.rotation.x+=dt*8;
     g.fuse-=dt;
     if(g.fuse<=0){
-      explodeGrenade(g.pos);
+      if(g.kind==='incendiary')
+        explodeIncendiary(g.pos);
+      else
+        explodeGrenade(g.pos);
       scene.remove(g.mesh);
       g.dead=true;
     }
@@ -8980,10 +9236,11 @@ function update(){
   grenades=
     grenades.filter(g=>!g.dead);
   /* =====================================================
-     UTILITY GADGETS (CLAYMORES / BARBED WIRE)
+     UTILITY GADGETS (CLAYMORES / BARBED WIRE / FIRE ZONES)
   ===================================================== */
   updateClaymores(dt);
   updateBarbedWires(dt);
+  updateFireZones(dt);
   /* =====================================================
      TEMPORARY WALLS (DEPLOYABLE SHIELD)
   ===================================================== */
@@ -9069,6 +9326,15 @@ function update(){
       t=>{
         if(t.life<=0){
           scene.remove(t.mesh);
+          /*
+            PERFORMANCE: each tracer is its own freshly-created
+            CylinderGeometry + cloned material (see addTracer()) —
+            without disposing both here, every single shot fired
+            all game leaked a GPU buffer that scene.remove() alone
+            never frees.
+          */
+          t.mesh.geometry.dispose();
+          t.mesh.material.dispose();
           return false;
         }
         return true;
@@ -9497,6 +9763,81 @@ const PLAYER_OPS=[
       name:'RALLY HEAL',
       cooldown:22,
       desc:'Instantly restores HP to you and every living teammate nearby.'
+    }
+  },
+  /*
+    VOLT — the roster's first TECH operator and first true crowd
+    -control ability: EMP BURST (see useEmpBurst()) doesn't deal
+    damage or buff anyone, it just takes every nearby enemy's gun
+    out of the fight for a few seconds (jammedTimer, read by
+    runBotAI()'s fire-check right next to fireCd). RZ-7 sits as a
+    light, high-fire-rate carbine so Volt plays as a skirmisher
+    who opens a window for the team rather than a frontline gun.
+  */
+  {
+    id:'volt',
+    name:'VOLT',
+    role:'TECH',
+    accent:'#4ad8ff',
+    secondary:'pistol',
+    cost:500,
+    maxHp:95,
+    speedMul:1.05,
+    weapon:{
+      name:'RZ-7 SCRAMBLER CARBINE',
+      dmg:18,
+      fireCd:.11,
+      mag:32,
+      reload:1.4,
+      pellets:1,
+      spread:.009,
+      range:50,
+      aimFov:44,
+      sight:'reflex',
+      recoil:{pitch:.018,yaw:.009}
+    },
+    ability:{
+      name:'EMP BURST',
+      cooldown:24,
+      desc:'Disables every enemy weapon in a wide radius for several seconds.'
+    }
+  },
+  /*
+    ASH — the roster's first DEMOLITIONS/area-denial operator:
+    INCENDIARY CHARGE (see throwIncendiaryCharge()/
+    explodeIncendiary()/updateFireZones()) reuses FRAG CHARGE's
+    exact throw physics but detonates into a lingering burning
+    zone instead of a single instant hit, rewarding herding
+    enemies through a doorway or site rather than just landing
+    one good throw. BR-7 is a harder-hitting, harder-recoiling
+    rifle to match a front-line demolitions identity.
+  */
+  {
+    id:'ash',
+    name:'ASH',
+    role:'DEMOLITIONS',
+    accent:'#ff6a20',
+    secondary:'shorty',
+    cost:550,
+    maxHp:110,
+    speedMul:.98,
+    weapon:{
+      name:'BR-7 BATTLE RIFLE',
+      dmg:24,
+      fireCd:.15,
+      mag:24,
+      reload:1.5,
+      pellets:1,
+      spread:.005,
+      range:58,
+      aimFov:40,
+      sight:'holo',
+      recoil:{pitch:.023,yaw:.01}
+    },
+    ability:{
+      name:'INCENDIARY CHARGE',
+      cooldown:18,
+      desc:'Throws a charge that explodes and leaves a burning zone that damages anyone inside.'
     }
   }
 ];
@@ -12311,11 +12652,17 @@ function handleDuelOpponentLeft(){
   applies to a duel.
 */
 function clearDuelTransientFx(){
-  for(const b of bulletTracers)
+  for(const b of bulletTracers){
     scene.remove(b.mesh);
+    b.mesh.geometry.dispose();
+    b.mesh.material.dispose();
+  }
   bulletTracers=[];
-  for(const hole of bulletHoles)
+  for(const hole of bulletHoles){
     scene.remove(hole.mesh);
+    hole.mesh.geometry.dispose();
+    hole.mesh.material.dispose();
+  }
   bulletHoles=[];
   for(const p of particles)
     scene.remove(p.spr);
