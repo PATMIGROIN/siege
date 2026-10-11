@@ -5760,32 +5760,40 @@ function playerShoot(){
     0
   );
   /*
-    RECOIL KICK — purely a VIEWMODEL effect now: it moves the
-    gun mesh (see the gunGroup.rotation/position lines in
-    update()) and never touches camera.rotation or screen
-    shake, so recoil never drags your actual aim point or the
-    screen itself around — only the gun kicks. Each trigger
-    pull adds an instant impulse; the decay happens once per
-    frame in update(). Aiming down sights braces the weapon, so
-    ADS cuts the kick noticeably; crouching/crawling braces it
-    further.
+    RECOIL — each trigger pull adds an instant impulse to
+    player.recoilPitch/recoilYaw; the decay happens once per
+    frame in update(). These now drive BOTH your actual aim
+    point (camera.rotation in update() climbs with them, so a
+    sustained burst genuinely walks off-target and has to be
+    reined back in — real, fightable recoil) AND the gunGroup
+    viewmodel kick, so what you see the gun do always matches
+    what your aim is actually doing.
 
-    Because recoilPitch/recoilYaw decay gradually (see update())
-    rather than resetting between shots, a single tap only ever
-    adds one impulse on top of ~0, while holding the trigger on
-    an automatic weapon keeps stacking a new impulse on top of
-    whatever hasn't decayed away yet — so the gun's kick visibly
-    climbs the longer a burst goes on, settling into a steady
-    sawtooth rather than every shot kicking the same fixed
-    amount. Slow-firing weapons (DMR, shotgun) have enough gap
-    between shots to fully decay first, so they stay "first shot"
-    light on every pull.
+    Because they decay gradually rather than resetting between
+    shots, a single tap only ever adds one impulse on top of
+    ~0 (easy to control — a quick tap-fire rhythm barely climbs
+    at all), while holding the trigger on an automatic weapon
+    keeps stacking a new impulse on top of whatever hasn't
+    decayed away yet, climbing into a real pattern you have to
+    actively counter by pulling the mouse back down — decently
+    hard, but the ~9/s (pitch) and ~7/s (yaw) decay rates mean
+    letting off the trigger for even a moment brings it back
+    under control fast, so it never spirals out of recovery.
+    Slow-firing weapons (DMR, shotgun) have enough gap between
+    shots to fully decay first, so they stay "first shot" light
+    on every pull regardless.
+
+    Aiming down sights braces the weapon hard — ADS cuts the
+    impulse to 40% (vs. hip-fire's 100%), on top of which
+    crouching/crawling braces it further — so recoil is the
+    hip-fire "spray and pray" problem ADS is specifically meant
+    to solve.
   */
   const recoilDef=
     player.weaponRecoil||
     {pitch:.02,yaw:.008};
   let recoilMul=
-    1-player.aimT*.45;
+    1-player.aimT*.6;
   if(player.stance==='crouched')
     recoilMul*=.8;
   else if(player.stance==='crawl')
@@ -8548,13 +8556,17 @@ function update(){
   /*
     RECOIL — each shot adds an instantaneous kick to
     these offsets (see playerShoot()); here they just
-    decay back toward zero every frame. They ONLY drive the
-    gunGroup viewmodel kick below now (never camera.rotation
-    or screen shake), so recoil is purely cosmetic — it can
-    never drag your actual aim point or the screen around.
-    Decaying gradually rather than resetting instantly is what
-    makes a sustained burst feel progressively kickier than a
-    single tap: see the longer comment in playerShoot().
+    decay back toward zero every frame. They drive BOTH
+    camera.rotation below (your real aim climbs with sustained
+    fire — this is the actual, fightable recoil pattern) and
+    the gunGroup viewmodel kick further down, kept in the same
+    player.yaw/pitch-separate fields so recovery (and your own
+    mouse input counteracting the climb) never fights the
+    composition order. Decaying gradually rather than resetting
+    instantly is what makes a sustained burst climb progressively
+    worse than a single tap while still settling back down fast
+    once you let off the trigger: see the longer comment in
+    playerShoot().
   */
   player.recoilPitch+=
     (0-player.recoilPitch)*Math.min(1,dt*9);
@@ -8594,13 +8606,13 @@ function update(){
     (Math.random()-.5)*player.shakeMag*.1;
   camera.rotation.order='YXZ';
   camera.rotation.y=
-    player.yaw+shakeY;
+    player.yaw+player.recoilYaw+shakeY;
   camera.rotation.x=
     Math.max(
       -1.45,
       Math.min(
         1.45,
-        player.pitch+shakeX
+        player.pitch+player.recoilPitch+shakeX
       )
     );
   camera.rotation.z=
@@ -8670,26 +8682,30 @@ function update(){
   player.recoilKick+=
     (0-player.recoilKick)*Math.min(1,dt*14);
   /*
-    All recoil feedback lives on the gun mesh alone: recoilKick
-    is the sharp per-shot snap-back (position), while the slower
-    -decaying recoilPitch/recoilYaw (see above) are what let the
-    kick visibly climb across a sustained burst instead of every
-    shot looking identical. Scaled up well past their old
-    camera-rotation values since they no longer have to stay
-    subtle enough to not fight your aim.
+    The gun mesh echoes the same recoilPitch/recoilYaw that just
+    kicked camera.rotation above, so what you see the gun do
+    always matches what your aim is actually doing: recoilKick
+    is an extra sharp per-shot snap-back (position only, decays
+    fast) layered on top, while the slower-decaying recoilPitch/
+    recoilYaw are what let the kick visibly climb across a
+    sustained burst instead of every shot looking identical.
+    Multipliers here are modest (close to 1x) rather than wildly
+    exaggerated, since the camera itself is now also moving by
+    the full amount — this is just a bit of extra readability on
+    the mesh, not a second helping of recoil.
   */
   gunGroup.position.x=
-    -.34*player.aimT+player.recoilYaw*.6;
+    -.34*player.aimT+player.recoilYaw*.3;
   gunGroup.position.y=
     bobY+.09*player.aimT+player.recoilKick*.05;
   gunGroup.position.z=
     .22*player.aimT+player.recoilKick*.16;
   gunGroup.rotation.x=
-    -player.recoilKick*.09-player.recoilPitch*2.4;
+    -player.recoilKick*.09-player.recoilPitch*1.1;
   gunGroup.rotation.y=
-    player.recoilYaw*2.6;
+    player.recoilYaw*1.2;
   gunGroup.rotation.z=
-    player.recoilYaw*1.3;
+    player.recoilYaw*.6;
   if(player.fireCd>0)
     player.fireCd-=dt;
   if(player.reloadCd>0){
