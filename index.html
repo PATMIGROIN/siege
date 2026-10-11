@@ -484,6 +484,59 @@ canvas{
   height:100%;
   background:#5a7a1a;
 }
+/*
+  LOW-HP WARNING — toggled on #hpBar's fill (and #hpVal's text)
+  by updateHud() once hp/maxHp drops under LOW_HP_FRACTION, see
+  that constant. Red instead of the usual olive-green, plus a
+  slow pulse on both the bar and the number so it's readable out
+  of the corner of an eye without needing to look at the HUD.
+*/
+@keyframes lowHpPulse{
+  0%,100%{opacity:1;}
+  50%{opacity:.45;}
+}
+.bar i.lowHp{
+  background:#c92a2a;
+  animation:lowHpPulse 1s ease-in-out infinite;
+}
+#hpVal.lowHp{
+  color:#c92a2a;
+  animation:lowHpPulse 1s ease-in-out infinite;
+}
+/*
+  KILL FEED — a small stack of recent player eliminations, top
+  center. Entries are appended/removed by addKillFeedEntry();
+  this is pure presentation (fade in, hold, fade out via the
+  opacity transition, actual removal handled in JS after the
+  hold+fade duration).
+*/
+#killFeed{
+  position:fixed;
+  top:64px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:5;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
+  pointer-events:none;
+}
+#killFeed .killFeedEntry{
+  font-size:14px;
+  letter-spacing:1px;
+  font-weight:bold;
+  color:#ffd060;
+  background:rgba(20,18,10,.65);
+  padding:4px 12px;
+  border:1px solid rgba(255,208,96,.4);
+  opacity:0;
+  transition:opacity .25s ease;
+  white-space:nowrap;
+}
+#killFeed .killFeedEntry.show{
+  opacity:1;
+}
 #ammoHud{
   position:fixed;
   bottom:20px;
@@ -1355,6 +1408,7 @@ canvas{
   <i class="frontPost"></i>
   <i class="frontDot"></i>
 </div>
+<div id="killFeed"></div>
 <div id="damageOverlay"></div>
 <div id="hud">
   <div>
@@ -2062,7 +2116,8 @@ const levelThemes=[
       [0x1a1a25,0x9a6aff]
     ],
     atmo:{color:0x9a6aff,size:.06,opacity:.22,speed:.05,drift:.08,fall:false},
-    atkSpawn:{x:6,z:28}
+    atkSpawn:{x:6,z:28},
+    upperFloor:{ax:-30,az:22,hw:3,hd:3,platformH:3.4,stairLen:5}
   },
   {
     name:'ARCTIC OUTPOST',
@@ -2091,7 +2146,8 @@ const levelThemes=[
       [0xc8dae2,0x1858a0]
     ],
     atmo:{color:0xffffff,size:.07,opacity:.5,speed:.35,drift:.1,fall:true},
-    atkSpawn:{x:-26,z:26}
+    atkSpawn:{x:-26,z:26},
+    upperFloor:{ax:30,az:20,hw:3,hd:3,platformH:3.4,stairLen:5}
   },
   {
     name:'TOXIC SWAMP',
@@ -2149,7 +2205,8 @@ const levelThemes=[
       [0xc8a868,0x5a4018]
     ],
     atmo:{color:0xd8b878,size:.06,opacity:.3,speed:.06,drift:.14,fall:false},
-    atkSpawn:{x:-30,z:-28}
+    atkSpawn:{x:-30,z:-28},
+    upperFloor:{ax:-32,az:30,hw:3,hd:3,platformH:3.4,stairLen:5}
   },
   {
     name:'VOLCANIC FORGE',
@@ -4017,7 +4074,18 @@ const player={
   recoilKick:0,
   tilt:0,
   team:'attack',
-  spawnGrace:0
+  spawnGrace:0,
+  /*
+    SCREEN SHAKE — a single decaying magnitude bumped by
+    addScreenShake() wherever the player fires or takes damage
+    (see that function), and applied as a small random jitter on
+    top of the real camera.rotation in the main update() loop
+    right where recoilPitch/recoilYaw/tilt are already composed
+    together. Kept as one scalar rather than a direction vector —
+    the randomness itself is the point, it just needs an envelope
+    to decay smoothly.
+  */
+  shakeMag:0
 };
 const SPAWN_GRACE_DURATION=2.2;
 camera.position.set(
@@ -4381,6 +4449,61 @@ function showMsg(text,ms=2000){
       ms
     );
 }
+/*
+  SCREEN SHAKE — bumps player.shakeMag, capped at SHAKE_MAX so
+  stacking hits (e.g. a grenade landing while already recoiling)
+  can't run away to something nauseating. The actual per-frame
+  decay + camera jitter lives in the main update() loop, right
+  alongside the existing recoilPitch/recoilYaw/tilt composition —
+  see the comment there. Call this instead of touching
+  player.shakeMag directly from a new damage/weapon source.
+*/
+const SHAKE_MAX=1;
+function addScreenShake(amount){
+  player.shakeMag=
+    Math.min(SHAKE_MAX,player.shakeMag+amount);
+}
+/*
+  KILL FEED — a tactical shooter staple that was simply missing:
+  every elimination only ever reported through a hitmarker sound
+  and (on a headshot) a brief "HEADSHOT" message, with no log of
+  WHO you just killed. Call this from a player-caused-kill site
+  (see fireWeaponRay()/explodeGrenade()/explodeClaymore()) with a
+  ready-made label; it stacks up to KILL_FEED_MAX entries (oldest
+  pushed out immediately rather than overflowing) and fades each
+  one out on its own timer.
+*/
+const KILL_FEED_MAX=4;
+const KILL_FEED_HOLD_MS=2200;
+const KILL_FEED_FADE_MS=250;
+function addKillFeedEntry(text){
+  const feed=document.getElementById('killFeed');
+  if(!feed)
+    return;
+  while(feed.children.length>=KILL_FEED_MAX)
+    feed.removeChild(feed.firstChild);
+  const entry=document.createElement('div');
+  entry.className='killFeedEntry';
+  entry.textContent=text;
+  feed.appendChild(entry);
+  requestAnimationFrame(()=>entry.classList.add('show'));
+  setTimeout(()=>{
+    entry.classList.remove('show');
+    setTimeout(()=>{
+      if(entry.parentNode)
+        entry.parentNode.removeChild(entry);
+    },KILL_FEED_FADE_MS);
+  },KILL_FEED_HOLD_MS);
+}
+/*
+  LOW-HP WARNING threshold + heartbeat throttle — see the
+  .lowHp CSS (toggled below) and playLowHpHeartbeat(). Fires at
+  most once every HEARTBEAT_INTERVAL_MS even though updateHud()
+  itself runs every frame.
+*/
+const LOW_HP_FRACTION=.25;
+const HEARTBEAT_INTERVAL_MS=900;
+let lastHeartbeatAt=-Infinity;
 function updateHud(){
   document.getElementById('hpVal').textContent=
     Math.max(0,Math.round(player.hp));
@@ -4392,6 +4515,23 @@ function updateHud(){
         player.hp/player.maxHp
       )
     )*120+'px';
+  const hpFrac=
+    player.maxHp>0?player.hp/player.maxHp:0;
+  const isLowHp=
+    player.hp>0 &&
+    hpFrac<=LOW_HP_FRACTION &&
+    gameState==='playing';
+  document.getElementById('hpBar')
+    .classList.toggle('lowHp',isLowHp);
+  document.getElementById('hpVal')
+    .classList.toggle('lowHp',isLowHp);
+  if(isLowHp){
+    const now=performance.now();
+    if(now-lastHeartbeatAt>HEARTBEAT_INTERVAL_MS){
+      lastHeartbeatAt=now;
+      playLowHpHeartbeat();
+    }
+  }
   document.getElementById('spawnShieldHud').style.display=
     player.spawnGrace>0?'block':'none';
   if(player.spawnGrace>0){
@@ -5209,6 +5349,33 @@ function playUiClick(){
   osc.start(t);
   osc.stop(t+.1);
 }
+/*
+  LOW-HP HEARTBEAT — a quick two-pulse low thump ("lub-dub"),
+  same oscillator/gain-envelope technique as every other sound
+  here. Throttled from updateHud() (see lastHeartbeatAt there)
+  rather than played every call, since updateHud() runs once a
+  frame — without a throttle this would just be a constant drone
+  instead of a heartbeat.
+*/
+function playLowHpHeartbeat(){
+  ensureAudio();
+  if(!audioCtx)
+    return;
+  const t=audioCtx.currentTime;
+  [0,.14].forEach(off=>{
+    const osc=audioCtx.createOscillator();
+    osc.type='sine';
+    osc.frequency.setValueAtTime(70,t+off);
+    osc.frequency.exponentialRampToValueAtTime(45,t+off+.1);
+    const g=audioCtx.createGain();
+    g.gain.setValueAtTime(.001,t+off);
+    g.gain.linearRampToValueAtTime(.35,t+off+.02);
+    g.gain.exponentialRampToValueAtTime(.001,t+off+.12);
+    osc.connect(g).connect(sfxGain);
+    osc.start(t+off);
+    osc.stop(t+off+.14);
+  });
+}
 function playRoundStinger(won){
   ensureAudio();
   if(!audioCtx)
@@ -5522,6 +5689,11 @@ function fireWeaponRay(origin,dir){
       addTokens(10);
       triggerFinisher(endPoint);
       checkEliminationWin();
+      addKillFeedEntry(
+        (closestIsHead?'HEADSHOT — ':'')+
+        'ELIMINATED '+
+        (closestEnemy.op?closestEnemy.op.name:'ENEMY')
+      );
     }
     /*
       Report the hit back to the caller instead of announcing
@@ -5609,6 +5781,14 @@ function playerShoot(){
     recoilDef.yaw*recoilMul;
   player.recoilKick=
     Math.min(1,player.recoilKick+.7);
+  /*
+    Once per trigger pull (not once per pellet, down in the loop
+    below) — a shotgun blast should feel like ONE solid kick, not
+    8 stacked ones (same per-pellet-vs-per-shot lesson as the
+    HEADSHOT message fix above). Scaled down for ADS/crouch the
+    same way the recoil impulse itself already is.
+  */
+  addScreenShake(.22*recoilMul);
   const origin=
     camera.position.clone();
   const baseDir=
@@ -5892,10 +6072,25 @@ function botFireAt(shooter,target){
   const isHeadshot=
     Math.random()<
     (shooter.isBetter?.12:.08);
+  /*
+    shooter.weaponDmg is PER PELLET (see makeBot()/spawnBossEncounter()
+    setting it straight from op.weapon.dmg*dmgMul, with no pellet
+    multiplier) — fine for every single-pellet weapon, but this whole
+    function already collapses a trigger pull into ONE hit/miss roll
+    rather than simulating each pellet separately, so a shotgun bot
+    (TAC-12 SHOTGUN / SUPER SHORTY, pellets:8/6) was only ever dealing
+    1 pellet's worth of damage on a successful hit — about 1/8th of
+    what the same weapon deals in the player's hands. Multiplying by
+    the weapon's pellet count on a connecting shot restores that
+    intended power level; a headshot stays a flat instant kill either
+    way, so pellets don't matter there.
+  */
+  const pelletCount=
+    (shooter.op&&shooter.op.weapon&&shooter.op.weapon.pellets)||1;
   const dmg=
     isHeadshot
     ?9999
-    :shooter.weaponDmg;
+    :shooter.weaponDmg*pelletCount;
   if(isPlayer){
     if(player.spawnGrace>0)
       return;
@@ -5907,6 +6102,7 @@ function botFireAt(shooter,target){
     */
     player.hp-=
       dmg*(player.fortifyTimer>0?.5:1);
+    addScreenShake(.4);
     document
       .getElementById('damageOverlay')
       .style.opacity=.7;
@@ -6828,6 +7024,31 @@ function triggerAbility(){
     return;
   if(player.abilityCd>0)
     return;
+  /*
+    SIEGE's breach charge is the only ability that can actually
+    fail (no wall in range — see breachChargeAbility()'s own
+    'NO WALL IN RANGE' message/cooldown-refund). Every OTHER
+    ability below always succeeds once it's called, so the
+    shared "<name> ACTIVATED" message/sound/cooldown-set stays
+    unconditional for them. For siege, check success FIRST so a
+    failed breach never flashes "BREACH CHARGE ACTIVATED" (plus
+    its sound) for one frame right before being overwritten by
+    "NO WALL IN RANGE" — breachChargeAbility() now just reports
+    whether it found a wall, instead of touching abilityCd itself.
+  */
+  if(currentOperator.id==='siege'){
+    if(!breachChargeAbility())
+      return;
+    player.abilityCd=
+      currentOperator.ability.cooldown;
+    showMsg(
+      currentOperator.ability.name+
+      ' ACTIVATED',
+      1400
+    );
+    playAbilitySound();
+    return;
+  }
   player.abilityCd=
     currentOperator.ability.cooldown;
   showMsg(
@@ -6843,9 +7064,6 @@ function triggerAbility(){
     case 'phantom':
       activateCloak();
       break;
-    case 'siege':
-      breachChargeAbility();
-      break;
     case 'warden':
       deployShield();
       break;
@@ -6860,6 +7078,9 @@ function triggerAbility(){
       break;
     case 'titan':
       activateFortify();
+      break;
+    case 'aegis':
+      useRallyHeal();
       break;
   }
 }
@@ -6953,6 +7174,10 @@ function explodeGrenade(pos){
           new THREE.Vector3(en.x,1.2,en.z)
         );
         checkEliminationWin();
+        addKillFeedEntry(
+          'FRAG CHARGE — ELIMINATED '+
+          (en.op?en.op.name:'ENEMY')
+        );
       }
     }
   });
@@ -6971,6 +7196,7 @@ function explodeGrenade(pos){
       Math.round(
         25*(1-pd/3)
       );
+    addScreenShake(.6);
   }
   spawnGlowParticle(
     pos,0xff8020,4.5,.45
@@ -7244,6 +7470,7 @@ function explodeClaymore(x,z,owner){
     const pd=Math.hypot(player.x-x,player.z-z);
     if(pd<R){
       player.hp-=Math.round(220*(1-pd/R));
+      addScreenShake(.7);
     }
   }
   else{
@@ -7265,12 +7492,17 @@ function explodeClaymore(x,z,owner){
             new THREE.Vector3(en.x,1.2,en.z)
           );
           checkEliminationWin();
+          addKillFeedEntry(
+            'CLAYMORE — ELIMINATED '+
+            (en.op?en.op.name:'ENEMY')
+          );
         }
       }
     });
     const pd=Math.hypot(player.x-x,player.z-z);
     if(pd<2.2){
       player.hp-=Math.round(30*(1-pd/2.2));
+      addScreenShake(.5);
     }
   }
   const pos=new THREE.Vector3(x,.8,z);
@@ -7541,11 +7773,10 @@ function breachChargeAbility(){
       pos,0xffaa50,5,.3
     );
     showMsg('WALL BREACHED',1400);
+    return true;
   }
-  else{
-    player.abilityCd=0;
-    showMsg('NO WALL IN RANGE',1200);
-  }
+  showMsg('NO WALL IN RANGE',1200);
+  return false;
 }
 function deployShield(){
   const dir=
@@ -7605,6 +7836,53 @@ function useStimShot(){
   showMsg(
     'STIM SHOT — +'+Math.round(player.hp-before)+' HP',
     1400
+  );
+}
+/*
+  RALLY HEAL (Aegis) — the roster's first ability that helps
+  anyone besides the player. Every other heal/buff (STIM SHOT,
+  FORTIFY, OVERDRIVE...) only ever affects the player; this does
+  the same instant "report how much actually landed, capped at
+  maxHp" heal useStimShot() uses, but to the player AND every
+  living ally within RALLY_HEAL_RADIUS. Allies are plain bot
+  entities (see makeBot()) with the same hp/maxHp/x/z/dead shape
+  botFireAt() already reads, so no new data is needed here.
+*/
+const RALLY_HEAL_RADIUS=14;
+const RALLY_HEAL_AMOUNT=35;
+function useRallyHeal(){
+  const beforeSelf=player.hp;
+  player.hp=
+    Math.min(player.maxHp,player.hp+RALLY_HEAL_AMOUNT);
+  spawnGlowParticle(
+    new THREE.Vector3(player.x,1.3,player.z),
+    0x9fffb0,1.3,.35
+  );
+  let healedAllies=0;
+  allies.forEach(a=>{
+    if(a.dead||a.hp<=0)
+      return;
+    if(a.hp>=a.maxHp)
+      return;
+    const d=
+      Math.hypot(a.x-player.x,a.z-player.z);
+    if(d>RALLY_HEAL_RADIUS)
+      return;
+    a.hp=Math.min(a.maxHp,a.hp+RALLY_HEAL_AMOUNT);
+    healedAllies++;
+    spawnGlowParticle(
+      new THREE.Vector3(a.x,1.3,a.z),
+      0x9fffb0,1.1,.3
+    );
+  });
+  showMsg(
+    'RALLY HEAL — +'+
+    Math.round(player.hp-beforeSelf)+' HP'+
+    (healedAllies>0
+      ?' · '+healedAllies+' '+
+        (healedAllies===1?'ALLY':'ALLIES')+' HEALED'
+      :''),
+    1600
   );
 }
 /*
@@ -7998,8 +8276,22 @@ function update(){
     gameState==='gameover' ||
     gameState==='victory' ||
     gameState==='menu' ||
-    gameState==='bosslife'
+    gameState==='bosslife' ||
+    gameState==='roundover'
   ){
+    /*
+      'roundover' added here so bots freeze the INSTANT a round's
+      outcome is decided (winRound()/loseRound() set this the
+      moment the bomb is defused or time runs out), the same way
+      everything already freezes once killCam.active is true.
+      Without it, the bot-AI block further down runs as a SIBLING
+      of the `if(gameState==='playing'){...}` win/loss checks, not
+      nested inside them — so a still-alive enemy could land a
+      killing shot and call startDeathCam() during the 2.4s
+      setTimeout(resetRound,2400) window, flipping the screen to
+      an "ELIMINATED" kill-cam right on top of the just-shown
+      round-won/round-lost banner.
+    */
     killCam.active=false;
     renderer.render(
       scene,
@@ -8273,18 +8565,36 @@ function update(){
     :0;
   player.tilt+=
     (tiltTarget-player.tilt)*Math.min(1,dt*10);
+  /*
+    SCREEN SHAKE decay + jitter — see addScreenShake(). Decays
+    exponentially-ish (multiplicative per frame rather than a
+    flat subtract) so a big hit's shake falls off fast at first
+    then tapers out gently, and the jitter itself is just fresh
+    random noise each frame scaled by the current magnitude —
+    cheap, and reads as "rattled" rather than a smooth wobble.
+  */
+  player.shakeMag*=
+    Math.max(0,1-dt*5);
+  if(player.shakeMag<.002)
+    player.shakeMag=0;
+  const shakeX=
+    (Math.random()-.5)*player.shakeMag*.1;
+  const shakeY=
+    (Math.random()-.5)*player.shakeMag*.1;
   camera.rotation.order='YXZ';
   camera.rotation.y=
-    player.yaw+player.recoilYaw;
+    player.yaw+player.recoilYaw+shakeY;
   camera.rotation.x=
     Math.max(
       -1.45,
       Math.min(
         1.45,
-        player.pitch+player.recoilPitch
+        player.pitch+player.recoilPitch+shakeX
       )
     );
-  camera.rotation.z=player.tilt;
+  camera.rotation.z=
+    player.tilt+
+    (Math.random()-.5)*player.shakeMag*.06;
   const forward=_moveForward;
   camera.getWorldDirection(
     forward
@@ -8921,8 +9231,18 @@ const PLAYER_OPS=[
     maxHp:115,
     speedMul:.95,
     weapon:{
+      /*
+        9 dmg x 8 pellets was only 72 total per shot at a .75s
+        cadence (~96 DPS before reload, closer to ~70/s sustained)
+        — noticeably below every rifle/SMG's ~115-140 DPS with no
+        upside besides a 20-range cap, which is already its own
+        real tradeoff. Bumped to 11/pellet (88/shot, ~117 DPS) to
+        close most of that gap while staying short-ranged and
+        shotgun-identity-appropriate (still weaker than a rifle
+        beyond point-blank, thanks to the spread + range cap).
+      */
       name:'TAC-12 SHOTGUN',
-      dmg:9,
+      dmg:11,
       fireCd:.75,
       mag:8,
       reload:2.2,
@@ -8947,10 +9267,19 @@ const PLAYER_OPS=[
     secondary:'pistol',
     maxHp:105,
     speedMul:.9,
+    /*
+      55 dmg at a .55s cadence is only ~100 DPS before reload —
+      the lowest of any primary despite having the tightest
+      spread in the game and nothing else to show for it. Cadence
+      nudged to .45s (~122 DPS) rather than touching per-shot
+      damage, so it still one-shots nothing extra and keeps its
+      "precise long-range rifle" identity, it just doesn't lag
+      behind the ARs/SMGs in a straight DPS race anymore.
+    */
     weapon:{
       name:'RX-DMR RIFLE',
       dmg:55,
-      fireCd:.55,
+      fireCd:.45,
       mag:10,
       reload:1.8,
       pellets:1,
@@ -9081,6 +9410,43 @@ const PLAYER_OPS=[
       name:'FORTIFY',
       cooldown:26,
       desc:'Cuts incoming damage in half for a few seconds — stand your ground and soak it up.'
+    }
+  },
+  /*
+    AEGIS — the roster's first true SUPPORT: every other ability
+    (STIM SHOT included) only ever helps the player. RALLY HEAL
+    (see useRallyHeal()) is a squad-wide instant heal, giving the
+    allies a reason to matter beyond soaking bullets. MX-11
+    CARBINE sits deliberately mid-pack on DPS (between WARDEN and
+    VANGUARD) so the pick is about the ability, not a free weapon
+    upgrade.
+  */
+  {
+    id:'aegis',
+    name:'AEGIS',
+    role:'SUPPORT',
+    accent:'#9fffb0',
+    secondary:'pistol',
+    cost:400,
+    maxHp:100,
+    speedMul:1,
+    weapon:{
+      name:'MX-11 CARBINE',
+      dmg:20,
+      fireCd:.13,
+      mag:28,
+      reload:1.6,
+      pellets:1,
+      spread:.007,
+      range:55,
+      aimFov:62,
+      sight:'reflex',
+      recoil:{pitch:.016,yaw:.009}
+    },
+    ability:{
+      name:'RALLY HEAL',
+      cooldown:22,
+      desc:'Instantly restores HP to you and every living teammate nearby.'
     }
   }
 ];
@@ -11170,10 +11536,24 @@ function buildSideMenu(){
   fight's single boss (see spawnBossEncounter()). Your own
   allies are never scaled by this — only what you're up against.
 */
+/*
+  dmgMul/accuracyMul were previously {.7,1,1.3} on both axes at once —
+  since makeBot() multiplies accuracyMul and weaponDmg together (and an
+  isBetter enemy's accuracyMul already starts at a flat 1.1x before this
+  tier even applies), the two axes compounded into a much bigger overall
+  lethality swing than the numbers alone suggested: roughly 3.2x more
+  enemy damage-per-second-while-visible on HARD than on EASY, before
+  reaction speed was even counted. Narrowed to {.85,1,1.15} on both so no
+  single tier swings more than ~1.35x on either axis — reactionMul (how
+  fast a bot opens fire after spotting someone) keeps the bulk of the
+  easy/hard feel instead, since a slow-to-react easy bot and a
+  fast-to-react hard one is a difference players can actually read,
+  unlike a bot that just quietly rolls worse dice.
+*/
 const DIFFICULTIES=[
-  {id:'easy',label:'EASY',hpMul:.8,dmgMul:.7,accuracyMul:.75,reactionMul:1.5},
+  {id:'easy',label:'EASY',hpMul:.8,dmgMul:.85,accuracyMul:.85,reactionMul:1.5},
   {id:'normal',label:'NORMAL',hpMul:1,dmgMul:1,accuracyMul:1,reactionMul:1},
-  {id:'hard',label:'HARD',hpMul:1.25,dmgMul:1.3,accuracyMul:1.3,reactionMul:.6}
+  {id:'hard',label:'HARD',hpMul:1.25,dmgMul:1.15,accuracyMul:1.15,reactionMul:.6}
 ];
 let selectedDifficultyIndex=1;
 function buildDifficultyMenu(){
@@ -11711,6 +12091,7 @@ function duelResolveShotOnHost(shooter,origin,dir,weaponDef){
   */
   const dmg=isHead?weaponDef.dmg*1.6:weaponDef.dmg;
   player.hp-=dmg;
+  addScreenShake(.4);
   /*
     The JOINER's own shots never run fireWeaponRay() against a
     real local target — their `enemies` array is intentionally
