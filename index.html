@@ -5760,10 +5760,26 @@ function playerShoot(){
     0
   );
   /*
-    RECOIL KICK — each trigger pull adds an instant
-    impulse; the decay happens once per frame in update().
-    Aiming down sights braces the weapon, so ADS cuts the
-    kick noticeably; crouching/crawling braces it further.
+    RECOIL KICK — purely a VIEWMODEL effect now: it moves the
+    gun mesh (see the gunGroup.rotation/position lines in
+    update()) and never touches camera.rotation or screen
+    shake, so recoil never drags your actual aim point or the
+    screen itself around — only the gun kicks. Each trigger
+    pull adds an instant impulse; the decay happens once per
+    frame in update(). Aiming down sights braces the weapon, so
+    ADS cuts the kick noticeably; crouching/crawling braces it
+    further.
+
+    Because recoilPitch/recoilYaw decay gradually (see update())
+    rather than resetting between shots, a single tap only ever
+    adds one impulse on top of ~0, while holding the trigger on
+    an automatic weapon keeps stacking a new impulse on top of
+    whatever hasn't decayed away yet — so the gun's kick visibly
+    climbs the longer a burst goes on, settling into a steady
+    sawtooth rather than every shot kicking the same fixed
+    amount. Slow-firing weapons (DMR, shotgun) have enough gap
+    between shots to fully decay first, so they stay "first shot"
+    light on every pull.
   */
   const recoilDef=
     player.weaponRecoil||
@@ -5781,14 +5797,6 @@ function playerShoot(){
     recoilDef.yaw*recoilMul;
   player.recoilKick=
     Math.min(1,player.recoilKick+.7);
-  /*
-    Once per trigger pull (not once per pellet, down in the loop
-    below) — a shotgun blast should feel like ONE solid kick, not
-    8 stacked ones (same per-pellet-vs-per-shot lesson as the
-    HEADSHOT message fix above). Scaled down for ADS/crouch the
-    same way the recoil impulse itself already is.
-  */
-  addScreenShake(.22*recoilMul);
   const origin=
     camera.position.clone();
   const baseDir=
@@ -8540,10 +8548,13 @@ function update(){
   /*
     RECOIL — each shot adds an instantaneous kick to
     these offsets (see playerShoot()); here they just
-    decay back toward zero every frame. Because they're
-    kept separate from player.yaw/pitch (which the mouse
-    actually drives), recovery is automatic and never
-    fights the player's own aim.
+    decay back toward zero every frame. They ONLY drive the
+    gunGroup viewmodel kick below now (never camera.rotation
+    or screen shake), so recoil is purely cosmetic — it can
+    never drag your actual aim point or the screen around.
+    Decaying gradually rather than resetting instantly is what
+    makes a sustained burst feel progressively kickier than a
+    single tap: see the longer comment in playerShoot().
   */
   player.recoilPitch+=
     (0-player.recoilPitch)*Math.min(1,dt*9);
@@ -8583,13 +8594,13 @@ function update(){
     (Math.random()-.5)*player.shakeMag*.1;
   camera.rotation.order='YXZ';
   camera.rotation.y=
-    player.yaw+player.recoilYaw+shakeY;
+    player.yaw+shakeY;
   camera.rotation.x=
     Math.max(
       -1.45,
       Math.min(
         1.45,
-        player.pitch+player.recoilPitch+shakeX
+        player.pitch+shakeX
       )
     );
   camera.rotation.z=
@@ -8658,14 +8669,27 @@ function update(){
   }
   player.recoilKick+=
     (0-player.recoilKick)*Math.min(1,dt*14);
+  /*
+    All recoil feedback lives on the gun mesh alone: recoilKick
+    is the sharp per-shot snap-back (position), while the slower
+    -decaying recoilPitch/recoilYaw (see above) are what let the
+    kick visibly climb across a sustained burst instead of every
+    shot looking identical. Scaled up well past their old
+    camera-rotation values since they no longer have to stay
+    subtle enough to not fight your aim.
+  */
   gunGroup.position.x=
-    -.34*player.aimT;
+    -.34*player.aimT+player.recoilYaw*.6;
   gunGroup.position.y=
     bobY+.09*player.aimT+player.recoilKick*.05;
   gunGroup.position.z=
     .22*player.aimT+player.recoilKick*.16;
   gunGroup.rotation.x=
-    -player.recoilKick*.09;
+    -player.recoilKick*.09-player.recoilPitch*2.4;
+  gunGroup.rotation.y=
+    player.recoilYaw*2.6;
+  gunGroup.rotation.z=
+    player.recoilYaw*1.3;
   if(player.fireCd>0)
     player.fireCd-=dt;
   if(player.reloadCd>0){
@@ -9166,6 +9190,16 @@ const SECONDARY_WEAPONS={
    breacher that can instantly blow a wall, and a
    long-range marksman who can drop a bullet-blocking
    shield.
+
+   AIM-DOWN-SIGHT ZOOM: every reflex/holo/ghost sight's aimFov
+   was previously only a few degrees under BASE_FOV (75) — a
+   near-nonexistent zoom that made every non-scope sight feel
+   basically identical to hip-fire. They're now all pulled
+   down into the ~38-52 range (still each weapon's own value,
+   so SMGs stay the least zoomed and rifles the most) so ADS
+   reads as genuinely magnified, the way WARDEN's RX-DMR scope
+   (aimFov:30, untouched) always has. WARDEN stays the clear
+   outlier with real sniper-grade zoom.
 ========================================================= */
 const PLAYER_OPS=[
   {
@@ -9185,7 +9219,7 @@ const PLAYER_OPS=[
       pellets:1,
       spread:.004,
       range:60,
-      aimFov:55,
+      aimFov:40,
       sight:'reflex',
       recoil:{pitch:.026,yaw:.009}
     },
@@ -9212,7 +9246,7 @@ const PLAYER_OPS=[
       pellets:1,
       spread:.012,
       range:40,
-      aimFov:60,
+      aimFov:46,
       sight:'reflex',
       recoil:{pitch:.013,yaw:.007}
     },
@@ -9249,7 +9283,7 @@ const PLAYER_OPS=[
       pellets:8,
       spread:.09,
       range:20,
-      aimFov:68,
+      aimFov:52,
       sight:'ghost',
       recoil:{pitch:.065,yaw:.022}
     },
@@ -9312,7 +9346,7 @@ const PLAYER_OPS=[
       pellets:1,
       spread:.003,
       range:65,
-      aimFov:52,
+      aimFov:38,
       sight:'holo',
       recoil:{pitch:.021,yaw:.009}
     },
@@ -9339,7 +9373,7 @@ const PLAYER_OPS=[
       pellets:1,
       spread:.008,
       range:35,
-      aimFov:58,
+      aimFov:45,
       sight:'reflex',
       recoil:{pitch:.011,yaw:.006}
     },
@@ -9374,7 +9408,7 @@ const PLAYER_OPS=[
       pellets:1,
       spread:.01,
       range:38,
-      aimFov:58,
+      aimFov:45,
       sight:'reflex',
       recoil:{pitch:.012,yaw:.007}
     },
@@ -9402,7 +9436,7 @@ const PLAYER_OPS=[
       pellets:1,
       spread:.018,
       range:55,
-      aimFov:56,
+      aimFov:40,
       sight:'holo',
       recoil:{pitch:.02,yaw:.012}
     },
@@ -9439,7 +9473,7 @@ const PLAYER_OPS=[
       pellets:1,
       spread:.007,
       range:55,
-      aimFov:62,
+      aimFov:42,
       sight:'reflex',
       recoil:{pitch:.016,yaw:.009}
     },
